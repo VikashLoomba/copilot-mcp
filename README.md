@@ -9,7 +9,7 @@
   <img src="media/image.png" alt="MCP Interface" width="400" />
 </div>
 
-![Version](https://img.shields.io/badge/version-0.0.11-blue.svg?cacheSeconds=2592000)
+![Version](https://img.shields.io/badge/version-0.0.12-blue.svg?cacheSeconds=2592000)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![VSCode Extension](https://img.shields.io/badge/VSCode-Extension-blue.svg?logo=visual-studio-code)](https://code.visualstudio.com/api/references/extension-guidelines)
 [![MCP Client](https://img.shields.io/badge/MCP-Client-green.svg)](https://modelcontextprotocol.io/clients)
