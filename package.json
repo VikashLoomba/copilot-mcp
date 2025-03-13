@@ -61,7 +61,197 @@
             "name": "listResources",
             "description": "Retrieve resources from your MCP servers"
           }
+        ],
+        "disambiguation": [
+          {
+            "category": "agent",
+            "description": "The user is asking a complex question that will require a multi-step process to answer, or a multi-step process to complete a task, involving using your available tools. Use this agent to break down the problem into smaller steps and solve each step one by one.",
+            "examples": [
+              "Can you look up the docs for the latest version of the API and implement the changes?",
+              "I need to implement this complex feature. Please break it down into smaller steps and implement each step one by one.",
+              "I am getting the following error when I run the code. Please help me fix it."
+            ]
+          },
+          {
+            "category": "tools",
+            "description": "The user is asking a question that will require using a tool to answer. Use this agent to intelligently use the tools to answer the question.",
+            "examples": [
+              "Build a model context protocol server that implements file system operations using the MCP protocol. Look up the docs if you need to.",
+              "Can you look up the docs for the latest version of the API and implement the changes?",
+              "I need to implement this complex feature. Please break it down into smaller steps and implement each step one by one.",
+              "Where in my codebase can I find the function that handles the user login?"
+            ]
+          }
         ]
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "fileReadTool",
+        "tags": [
+          "mcpManager",
+          "vscode-mcp-tools"
+        ],
+        "toolReferenceName": "fileReadTool",
+        "displayName": "fileReadTool",
+        "modelDescription": "Read a file with optional offset and limit",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "The path to the file to read. Can be absolute or relative to the workspace root."
+            },
+            "offset": {
+              "type": "number",
+              "description": "Line number to start reading from (0-indexed). If not provided, starts from the beginning of the file."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Maximum number of lines to read. If not provided, reads to the end of the file."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        "canBeReferencedInPrompt": true,
+        "icon": "$(note)",
+        "userDescription": "Read a file with optional offset and limit"
+      },
+      {
+        "name": "fileEditTool",
+        "tags": [
+          "mcpManager",
+          "vscode-mcp-tools"
+        ],
+        "toolReferenceName": "fileEditTool",
+        "displayName": "fileEditTool",
+        "modelDescription": "Edit a file with preview and apply changes",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "The path to the file to edit. Can be absolute or relative to the workspace root."
+            },
+            "edits": {
+              "type": "array",
+              "description": "Array of edit operations to apply to the file.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "number",
+                    "description": "Starting line of the edit (0-indexed)."
+                  },
+                  "startCharacter": {
+                    "type": "number",
+                    "description": "Starting character position on the start line."
+                  },
+                  "endLine": {
+                    "type": "number",
+                    "description": "Ending line of the edit (0-indexed)."
+                  },
+                  "endCharacter": {
+                    "type": "number",
+                    "description": "Ending character position on the end line."
+                  },
+                  "newText": {
+                    "type": "string",
+                    "description": "The text to replace the specified range with."
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "startCharacter",
+                  "endLine",
+                  "endCharacter",
+                  "newText"
+                ]
+              }
+            }
+          },
+          "required": [
+            "path",
+            "edits"
+          ]
+        },
+        "canBeReferencedInPrompt": true,
+        "icon": "$(note)",
+        "userDescription": "Edit a file with preview and apply changes"
+      },
+      {
+        "name": "findFilesTool",
+        "tags": [
+          "mcpManager",
+          "vscode-mcp-tools"
+        ],
+        "toolReferenceName": "findFilesTool",
+        "displayName": "findFilesTool",
+        "modelDescription": "Find files in the workspace matching a glob pattern",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "A glob pattern to match files against (e.g., \"**/*.ts\" for all TypeScript files). Uses VS Code's built-in file search capabilities."
+            }
+          },
+          "required": [
+            "pattern"
+          ]
+        },
+        "canBeReferencedInPrompt": true,
+        "icon": "$(note)",
+        "userDescription": "Find files in the workspace matching a glob pattern"
+      },
+      {
+        "name": "listDirectoryTreeTool",
+        "tags": [
+          "mcpManager",
+          "vscode-mcp-tools"
+        ],
+        "toolReferenceName": "listDirectoryTreeTool",
+        "displayName": "listDirectoryTreeTool",
+        "modelDescription": "List the contents of a directory in a tree structure",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "The directory path to start from. If not provided, uses the workspace root. The tree is limited to a depth of 5 levels."
+            }
+          }
+        },
+        "canBeReferencedInPrompt": true,
+        "icon": "$(note)",
+        "userDescription": "List the contents of a directory in a tree structure"
+      },
+      {
+        "name": "runInTerminalTool",
+        "tags": [
+          "mcpManager",
+          "vscode-mcp-tools"
+        ],
+        "toolReferenceName": "runInTerminalTool",
+        "displayName": "runInTerminalTool",
+        "modelDescription": "Run a command in a terminal with shell integration",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The shell command to execute in the terminal. Creates a new terminal instance for each command execution."
+            }
+          },
+          "required": [
+            "command"
+          ]
+        },
+        "canBeReferencedInPrompt": true,
+        "icon": "$(note)",
+        "userDescription": "Run a command in a terminal with shell integration"
       }
     ],
     "viewsContainers": {
@@ -151,9 +341,9 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile": "RSPACK_CONFIG_VALIDATE=loose rspack",
+    "watch": "RSPACK_CONFIG_VALIDATE=loose rspack --watch",
+    "package": "RSPACK_CONFIG_VALIDATE=loose rspack --mode production --devtool",
     "build-tools": "cd .external/toolsParticipant && npm run build",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
@@ -161,36 +351,46 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "deploy": "vsce publish",
-    "package-extension": "vsce package"
+    "package-extension": "vsce package",
+    "esbuild-compile": "npm run check-types && node esbuild.js --production",
+    "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@rspack/cli": "^1.2.8",
+    "@rspack/core": "^1.2.8",
+    "@types/express": "^5.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.17.19",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@types/shell-quote": "^1.7.5",
     "@types/vscode": "^1.97.0",
+    "@types/ws": "^8.18.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "autoprefixer": "^10.4.20",
     "css-loader": "^7.1.2",
+    "esbuild": "^0.25.1",
+    "esbuild-plugin-copy": "^2.1.1",
+    "esbuild-plugin-style": "^0.0.1",
+    "esbuild-style-plugin": "^1.6.3",
     "eslint": "^9.19.0",
     "file-loader": "^6.2.0",
     "postcss": "^8.5.2",
     "postcss-loader": "^8.1.1",
     "style-loader": "^4.0.0",
-    "tailwindcss": "^4.0.0",
+    "tailwindcss": "^4.0.13",
     "ts-loader": "^9.5.2",
     "typescript": "^5.7.3",
-    "webpack": "^5.97.1",
-    "webpack-cli": "^6.0.1"
+    "ws": "^8.18.1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.15",
+    "@ai-sdk/openai-compatible": "^0.1.13",
     "@anthropic-ai/sdk": "^0.39.0",
-    "@modelcontextprotocol/sdk": "^1.6.1",
+    "@modelcontextprotocol/sdk": "^1.7.0",
     "@octokit/request": "^9.2.2",
     "@octokit/rest": "^21.1.1",
     "@radix-ui/react-collapsible": "^1.1.3",
@@ -203,12 +403,16 @@
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-switch": "^1.1.3",
     "@radix-ui/react-tooltip": "^1.1.8",
-    "@tailwindcss/postcss": "^4.0.6",
+    "@tailwindcss/postcss": "^4.0.13",
+    "@types/eventsource": "^1.1.15",
     "@vscode/chat-extension-utils": "^0.0.0-alpha.5",
+    "@vscode/prompt-tsx": "^0.3.0-alpha.21",
     "@vscode/vsce": "^3.2.2",
     "ai": "^4.1.54",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "eventsource": "^3.0.5",
+    "express": "^5.0.1",
     "find-cache-dir": "^5.0.0",
     "lucide-react": "^0.475.0",
     "next-themes": "^0.4.4",
@@ -218,6 +422,11 @@
     "sonner": "^2.0.1",
     "spawn-rx": "^5.1.2",
     "tailwind-merge": "^3.0.1",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.18.1"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.9",
+    "utf-8-validate": "^6.0.5"
   }
 }

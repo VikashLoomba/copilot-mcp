@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import '@/styles/globals.css';
+import './styles/globals.css';
 import { ServerConfig, ServerWithTools, ServerType, EnvVar } from './types';
-import { ServerCard } from './components/ServerCard';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { ServerCard } from './ServerCard';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import { Label } from './components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -13,15 +13,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "./components/ui/dialog";
+import { ScrollArea } from "./components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Toaster } from "@/components/ui/sonner";
+} from "./components/ui/tooltip";
+import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { Plus, X, Search, FilePlus, FileEdit, ServerIcon } from 'lucide-react';
 

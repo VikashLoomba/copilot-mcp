@@ -2,7 +2,6 @@
 module.exports = {
     darkMode: ["class"],
     content: [
-        "./src/**/*.{ts,tsx}",
         "./src/webview/**/*.{ts,tsx}",
     ],
     theme: {

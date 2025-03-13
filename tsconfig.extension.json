@@ -1,0 +1,16 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+      "outDir": "dist/extension",
+      "jsx": "react",
+      "jsxFactory": "vscpp",
+      "jsxFragmentFactory": "vscppf",
+      "esModuleInterop": true,
+      "paths": {
+		"@/*": ["./*"]
+	  }
+    },
+    "include": ["src/extension/**/*"],
+    "exclude": ["src/webview/**/*"]
+  }
+  

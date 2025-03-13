@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import '@/styles/globals.css';
+import './styles/globals.css';
 
 console.log('Debug: React entry point loaded');
 console.log('Debug: React version:', React.version);

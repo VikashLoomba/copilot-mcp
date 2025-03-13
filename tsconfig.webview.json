@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist/webview",
+    "module": "ESNext",
+    // If you're on React 17+ with the new JSX transform, you can do:
+    // "jsx": "react-jsx"
+    "jsx": "react"
+  },
+  "include": ["src/webview/**/*"],
+  "exclude": ["src/extension/**/*"]
+}
