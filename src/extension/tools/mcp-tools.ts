@@ -3,8 +3,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 // Import dynamically to avoid issues
 import { z } from 'zod';
 // Import necessary types for request handlers
-import { startWebSocketMcpServer } from '../websocket-server';
-import { baseClient } from '../websocket-client';
+import { startSseMcpServer } from '../sse-server';
+import { baseClient } from '../sse-client';
 import { McpProxyTool } from './McpProxyTool';
 import { LoggingLevelSchema } from '@modelcontextprotocol/sdk/types.js';
 // Edit Preview Provider (same as original)
@@ -461,7 +461,7 @@ export async function createMcpServer() {
             }
         }
     );
-    return await startWebSocketMcpServer(8080, 'localhost', server);
+    return await startSseMcpServer(8080, 'localhost', server);
 
 
 }
@@ -472,10 +472,6 @@ export async function startMcpServer() {
     const server = await createMcpServer();
     const { client, tools, dispose: disposeClient } = await baseClient();
     console.log('client', client);
-
-    
- 
-    
 
     //create proxy tools
     const proxyTools = tools.map(tool => new McpProxyTool(client, tool));

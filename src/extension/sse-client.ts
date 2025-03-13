@@ -3,7 +3,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 /**
- * Simple MCP client that connects to our WebSocket server
+ * Simple MCP client that connects to our SSE server
  */
 export async function baseClient(): Promise<{ client: Client, tools: Tool[], dispose: () => void }> {
     const client = new Client({
