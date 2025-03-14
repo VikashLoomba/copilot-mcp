@@ -189,6 +189,10 @@ function convertTreeToMarkdown(
 
 // Create the MCP server with VS Code tools
 export async function createMcpServer() {
+    // Get port from configuration
+    const config = vscode.workspace.getConfiguration('mcpManager');
+    const port = config.get<number>('serverPort') || 8888;
+
     // Static variables for file edit tool
     const previewScheme = 'fileedit-preview';
     const previewProvider = new EditPreviewProvider();
@@ -461,9 +465,7 @@ export async function createMcpServer() {
             }
         }
     );
-    return await startSseMcpServer(8080, 'localhost', server);
-
-
+    return await startSseMcpServer(port, 'localhost', server);
 }
 
 // Function to start the server with express and SSE transport
@@ -485,6 +487,4 @@ export async function startMcpServer() {
             server.dispose();
         }
     };
-
-
 }

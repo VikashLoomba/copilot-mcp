@@ -12,7 +12,7 @@
   },
   "displayName": "Copilot MCP",
   "description": "VSCode extension that acts as a Model Context Protocol (MCP) client, enabling integration between MCP servers and GitHub Copilot Chat",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.97.0"
@@ -335,6 +335,11 @@
               }
             }
           }
+        },
+        "mcpManager.serverPort": {
+          "type": "number",
+          "default": 8888,
+          "description": "Port number for MCP server"
         }
       }
     }

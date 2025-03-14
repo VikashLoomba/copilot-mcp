@@ -13,7 +13,7 @@ export async function baseClient(): Promise<{ client: Client, tools: Tool[], dis
         capabilities: {}
     });
     const transport = new SSEClientTransport(
-        new URL("http://localhost:8080/sse")
+        new URL("http://localhost:8888/sse")
     );
 
     try {

@@ -6,7 +6,7 @@ import express, { Response } from 'express';
 /**
  * Start the MCP server using WebSocket transport
  */
-export async function startSseMcpServer(port = 8080, hostname = 'localhost', server: McpServer) {
+export async function startSseMcpServer(port = 8888, hostname = 'localhost', server: McpServer) {
 
     const app = express();
 
