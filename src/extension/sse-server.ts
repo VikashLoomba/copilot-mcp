@@ -22,8 +22,8 @@ export async function startSseMcpServer(port = 8888, hostname = 'localhost', ser
         await transport.handlePostMessage(req, res);
     });
 
-    app.listen(port, () => {
-        console.log(`Server listening on port ${port}`);
+    app.listen(port, hostname, () => {
+        console.log(`Server listening on http://${hostname}:${port}`);
     });
 
     console.log(`MCP server started on port ${port}`);
