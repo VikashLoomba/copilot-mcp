@@ -3,6 +3,12 @@
 </div>
 <div align="center">
 
+<div align="center">
+<h1>Please Read!</h1>
+<h2>Since the VSCode team has offically brought MCP support to Copilot, this extension will now defer to their implementation. All existing configurations will be automatically migrated to the official VSCode implementation.</h2>
+</div>
+
+
 [![](https://dcbadge.limes.pink/api/server/https://discord.gg/copilotmcp)](https://discord.gg/copilotmcp)
 
 </div>
@@ -47,62 +53,6 @@
 - 🔄 **Multiple Server Types**: Support for both process-based and SSE (Server-Sent Events) servers
 - 🛡️ **Configuration Migration**: Automatic migration of server configurations to the latest format
 - 🧩 **Server Configuration Command**: Manual migration command for updating older configurations
-
-## 🎯 MCP Feature Support
-
-| Feature | Support |
-|---------|----------|
-| Tools | ✅ Full support |
-| Resources | ✅ Text resource support |
-| Prompts | ✅* Full support (coming soon) |
-| Sampling | ⏳ Planned |
-| Roots | ⏳ Planned |
-
-## 📦 Installation
-
-1. Install the [extension](https://marketplace.visualstudio.com/items?itemName=AutomataLabs.copilot-mcp) from the VSCode Marketplace
-2. Configure your MCP servers through the extension settings
-3. Start using GitHub Copilot Chat with your MCP tools!
-
-## 🛠️ Configuration
-
-You can configure your MCP servers in the UI or in VSCode settings.
-
-In the UI, look for the "MCP Servers" button in the activity bar.
-
-To configure your MCP servers in VSCode settings:
-
-```json
-{
-  "mcpManager.servers": [
-    {
-      "name": "Process-MCP-Server",
-      "type": "process",
-      "command": "start-server-command",
-      "enabled": true
-    },
-    {
-      "name": "SSE-MCP-Server",
-      "type": "sse",
-      "url": "https://your-sse-server.com/events",
-      "authToken": "your-optional-auth-token",
-      "enabled": true
-    }
-  ]
-}
-```
-
-### Server Configuration Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `name` | string | Display name for the server |
-| `type` | string | Server type: "process" or "sse" |
-| `command` | string | Command to start the server (for process servers) |
-| `url` | string | URL for SSE connection (for SSE servers) |
-| `authToken` | string | Authentication token (optional, for SSE servers) |
-| `enabled` | boolean | Whether the server is enabled |
-| `env` | object | Environment variables for process servers (key-value pairs) |
 
 ## 🚀 Usage
 
