@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/vikashloomba-copilot-mcp-badge.png)](https://mseep.ai/app/vikashloomba-copilot-mcp)
+
 <div align="center">
 <h1>Copilot MCP Client for VSCode</h1> 
 </div>
