@@ -20,7 +20,7 @@
 
 </div>
 
-> A powerful VSCode extension that acts as a Model Context Protocol (MCP) client, enabling seamless integration between MCP tool servers and GitHub Copilot Chat. Join the growing ecosystem of interoperable AI applications with flexible integration options.
+> A powerful VSCode extension that allows you to discover and install open-source MCP servers, enabling seamless integration between MCP tool servers and GitHub Copilot Chat. Join the growing ecosystem of interoperable AI applications with flexible integration options.
 
 ## ✨ Features
 
