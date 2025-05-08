@@ -79,6 +79,30 @@
 .dark {
   /* Dark theme values are automatically handled by VS Code's theming system */
   /* No need to explicitly set dark mode variables as they will respect VS Code's theme */
+  --radius: 0.625rem;
+  --background: var(--vscode-editor-background);
+  --foreground: var(--vscode-editor-foreground);
+  --card: var(--vscode-editorWidget-background);
+  --card-foreground: var(--vscode-editorWidget-foreground);
+  --popover: var(--vscode-editorHoverWidget-background);
+  --popover-foreground: var(--vscode-editorHoverWidget-foreground);
+  --primary: var(--vscode-button-background);
+  --primary-foreground: var(--vscode-button-foreground);
+  --secondary: var(--vscode-button-secondaryBackground);
+  --secondary-foreground: var(--vscode-button-secondaryForeground);
+  --muted: var(--vscode-editorGroupHeader-tabsBackground);
+  --muted-foreground: var(--vscode-disabledForeground);
+  --accent: var(--vscode-activityBarBadge-background);
+  --accent-foreground: var(--vscode-activityBarBadge-foreground);
+  --destructive: var(--vscode-editorError-foreground);
+  --border: var(--vscode-widget-border);
+  --input: var(--vscode-input-background);
+  --ring: var(--vscode-focusBorder);
+  --chart-1: var(--vscode-charts-red);
+  --chart-2: var(--vscode-charts-blue);
+  --chart-3: var(--vscode-charts-yellow);
+  --chart-4: var(--vscode-charts-orange);
+  --chart-5: var(--vscode-charts-green);
   --sidebar: var(--vscode-sideBar-background);
   --sidebar-foreground: var(--vscode-sideBar-foreground);
   --sidebar-primary: var(--vscode-activityBar-background);

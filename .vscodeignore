@@ -1,14 +1,49 @@
+out/**
+dist/**/bundle.js.map
+!dist/extension.js
+!web/dist/**
+
+# Exclude all node_modules directories
+**/node_modules/**
+
+# Exclude source files that are compiled/bundled
+src/**
+web/src/**
+web/public/**
+
+# Exclude build and config files
+esbuild.js
+web/vite.config.ts
+web/tsconfig.json
+web/tsconfig.app.json
+web/tsconfig.node.json
+web/package.json
+web/package-lock.json
+web/eslint.config.js
+web/components.json
+web/.gitignore
+web/README.md
+tsconfig.json
+eslint.config.mjs
+
+# Exclude test files and VS Code specific dev files
 .vscode/**
 .vscode-test/**
-out/**
-node_modules/**
-src/**
+**/*.test.ts
+**/*.spec.ts
+
+# Other common exclusions
+.git/**
+.github/**
 .gitignore
 .yarnrc
-esbuild.js
 vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
+!CHANGELOG.md
+!LICENSE
+!README.md
 **/*.map
-**/*.ts
-**/.vscode-test.*
+
+# Allow specific necessary files if they were excluded by broader rules above
+# For example, if you had a top-level asset you needed:
+!icon.png
+!logo.png

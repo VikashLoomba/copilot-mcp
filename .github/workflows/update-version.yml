@@ -1,0 +1,68 @@
+name: Update Version and Create Tag
+
+on:
+  push:
+    paths:
+      - 'package.json'
+      - 'src/*'
+      - '.github/*'
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (e.g. 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  update-version:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore:') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Update version in package.json if manually triggered
+      if: github.event_name == 'workflow_dispatch'
+      run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
+    
+    - name: Get package version
+      id: get_version
+      run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+    
+    - name: Update README badge
+      run: |
+        sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${{ steps.get_version.outputs.version }}-blue/" README.md
+    
+    - name: Configure Git
+      run: |
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+    
+    - name: Commit changes
+      run: |
+        git add README.md package.json package-lock.json
+        git diff --staged --quiet || git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
+        git push
+
+    - name: Delete existing tag if present
+      run: |
+        if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+          git tag -d "v${{ steps.get_version.outputs.version }}"
+          git push --delete origin "v${{ steps.get_version.outputs.version }}" || true
+        fi
+
+    - name: Create and push tag
+      run: |
+        git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release version ${{ steps.get_version.outputs.version }}"
+        git push origin "v${{ steps.get_version.outputs.version }}" 

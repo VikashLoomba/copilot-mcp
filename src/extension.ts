@@ -1,12 +1,22 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { CopilotMcpViewProvider } from './panels/ExtensionPanel';
 
+import { CopilotMcpViewProvider } from './panels/ExtensionPanel';
+const GITHUB_AUTH_PROVIDER_ID = 'github';
+const SCOPES = ['user:email', "read:org",
+    "read:user",
+    "repo",
+    "workflow",];
+	
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-
+export async function activate(context: vscode.ExtensionContext) {
+	const Octokit = await import("@octokit/rest");
+	const session = await vscode.authentication.getSession(GITHUB_AUTH_PROVIDER_ID, SCOPES, { createIfNone: true });
+	const octokit = new Octokit.Octokit({
+		auth: session.accessToken
+	});
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "copilot-mcp" is now active!');
@@ -22,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disposable);
 
-	const provider = new CopilotMcpViewProvider(context.extensionUri);
+	const provider = new CopilotMcpViewProvider(context.extensionUri, session.accessToken);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(CopilotMcpViewProvider.viewType, provider)
 	);

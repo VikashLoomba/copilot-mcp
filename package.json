@@ -1,16 +1,53 @@
 {
   "name": "copilot-mcp",
-  "displayName": "copilot-mcp",
-  "description": "Easily discover and add MCP servers to VSCode",
-  "version": "0.0.1",
+  "author": {
+    "email": "vikash@automatalabs.io",
+    "name": "Vikash Loomba",
+    "url": "https://automatalabs.io"
+  },
+  "publisher": "AutomataLabs",
+  "repository": {
+    "url": "https://github.com/vikashloomba/copilot-mcp",
+    "type": "git"
+  },
+  "displayName": "Copilot MCP",
+  "description": "VSCode extension that allows you to search, manage, and install open-source MCP servers",
+  "version": "0.0.35",
+  "icon": "logo.png",
   "engines": {
     "vscode": "^1.99.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Education",
+    "Snippets",
+    "Testing"
   ],
-  "activationEvents": [],
+  "keywords": [
+    "chat-participant",
+    "copilot",
+    "copilot-mcp",
+    "chat-participant-utils",
+    "dev",
+    "mcp",
+    "openrouter",
+    "coding",
+    "agent",
+    "autonomous",
+    "chatgpt",
+    "sonnet",
+    "ai",
+    "llama"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
+  "extensionDependencies": [
+    "github.copilot-chat"
+  ],
   "contributes": {
     "commands": [
       {
@@ -23,30 +60,33 @@
         {
           "id": "copilotMcpSidebar",
           "title": "Copilot MCP",
-          "icon": "resources/server.svg"
+          "icon": "resources/light/server.svg"
         }
       ]
     },
     "views": {
       "copilotMcpSidebar": [
         {
+          "type": "webview",
           "id": "copilotMcpView",
           "name": "Copilot MCP Panel",
-          "icon": "resources/server.svg"
+          "icon": "resources/light/server.svg"
         }
       ]
     }
   },
   "scripts": {
-    "install:all": "npm install && cd web && npm install",
+    "install:all": "npm install && cd web && npm install --legacy-peer-deps",
     "start:webview": "cd web && npm run start",
-    "build:webview": "cd web && npm run build",
+    "build:webview": "npm --prefix web run build",
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "package": "npm run build:all",
+    "build:all": "npm run compile && npm run build:webview",
+    "package-extension": "npm run package && npx vsce package -o copilot-mcp-${npm_package_version}.vsix",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
@@ -55,16 +95,19 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.99.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.99.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "eslint": "^9.25.1",
-    "esbuild": "^0.25.3",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.8.3",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.3",
+    "eslint": "^9.25.1",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.1.1"
   }
 }
