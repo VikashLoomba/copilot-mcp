@@ -11,12 +11,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Star,
-  Code2,
-  CalendarDays,
-  BookText,
-} from "lucide-react";
+import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 
@@ -72,134 +67,19 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
       console.error("README content is not available.");
       return;
     }
-
-    // Updated regex to specifically target JSON blocks
-    const jsonBlockRegex =
-      /```json\n{0}[\s\S]*?"mcpServers"[\s\S]*?(?:npx|uvx)[\s\S]*?\n```/g;
-    const jsonStrings: string[] = [];
-    let execResult;
-
-    // Loop through all matches of the regex
-    while ((execResult = jsonBlockRegex.exec(repo.readme)) !== null) {
-      // execResult[1] contains the captured group (the JSON content)
-      if (execResult[1]) {
-        jsonStrings.push(execResult[1].trim()); // .trim() to remove potential leading/trailing whitespace within the capture
+    const handleAddedServer = (message: MessageEvent) => {
+      if (message.type === "finish") {
+        setIsLoading(false);
       }
-    }
-    if (jsonStrings.length === 0) {
-      const markdownCodeBlock =
-        /```\n{0}[\s\S]*?"mcpServers"[\s\S]*?(?:npx|uvx)[\s\S]*?\n```/g;
-      let execResult;
-      while ((execResult = markdownCodeBlock.exec(repo.readme)) !== null) {
-        if (execResult[1]) {
-          jsonStrings.push(execResult[1].trim()); // .trim() to remove potential leading/trailing whitespace within the capture
-        }
-      }
-    }
-
-    if (jsonStrings.length > 0) {
-      console.log(`Found ${jsonStrings.length} JSON code block(s) in README.`);
-      jsonStrings.forEach((jsonString, index) => {
-        try {
-          const parsedJson = JSON.parse(jsonString);
-          console.log(
-            `Successfully parsed JSON from block ${index + 1}:`,
-            parsedJson
-          );
-          if (parsedJson.mcpServers) {
-            vscodeApi.postMessage({
-              type: "installServer",
-              server: parsedJson,
-            });
-            setIsLoading(false);
-            return;
-          }
-          // Further actions with parsedJson can be implemented here
-          // For example, extracting the command:
-          // if (parsedJson && parsedJson.mcpServers) {
-          //     console.log("MCP Servers config:", parsedJson.mcpServers);
-          //     // Here you would trigger the actual installation command execution based on parsedJson
-          // }
-        } catch (error) {
-          console.error(
-            `Failed to parse JSON from block ${index + 1}:`,
-            error,
-            "\nContent:",
-            jsonString
-          );
-          vscodeApi.postMessage({
-            type: "getInstallObject",
-            readme: jsonString,
-          });
-          // Handle parsing error, e.g., show a notification to the user
-        }
-      });
-    } else {
-      // Fallback: If no ```json blocks are found, try the original broader JSON object search
-      // This preserves your existing fallback for non-fenced JSON that includes "mcpServers"
-      console.log(
-        "No ```json ... ``` blocks found in README. Attempting to find raw JSON object with 'mcpServers'."
-      );
-      // Use a more balanced regex that ensures proper JSON structure with balanced braces
-      const jsonObjectRegex = /\{[\s\S]*?"mcpServers"[\s\S]*?\}(?=\s*[,\]}]|$)/;
-      // Alternative approach: send the entire readme for processing if regex fails
-      const objectMatch = repo.readme.match(jsonObjectRegex);
-      console.log("ObjectMatch?:", objectMatch);
-
-      // If no match or match appears incomplete (missing closing braces)
-      if (
-        !objectMatch ||
-        (objectMatch[0] && !objectMatch[0].trim().endsWith("}"))
-      ) {
-        console.log(
-          "JSON appears incomplete, sending entire readme for processing"
-        );
-        vscodeApi.postMessage({
-          type: "getInstallObject",
-          readme: repo.readme,
-        });
-        return; // Exit early to prevent further processing
-      }
-      if (objectMatch && objectMatch[0]) {
-        const rawJsonString = objectMatch[0];
-        try {
-          const parsedJson = JSON.parse(rawJsonString);
-          console.log(
-            "Successfully parsed raw JSON object from README:",
-            parsedJson
-          );
-          vscodeApi.postMessage({
-            type: "installServer",
-            server: parsedJson,
-          });
-          setIsLoading(false);
-          return;
-          // Further actions with parsedJson
-        } catch (error) {
-          console.error(
-            "Failed to parse raw JSON object from README:",
-            error,
-            "\nContent:",
-            rawJsonString
-          );
-          vscodeApi.postMessage({
-            type: "getInstallObject",
-            readme: repo.readme,
-          });
-          setIsLoading(false);
-          return;
-        }
-      } else {
-        console.error(
-          "No usable JSON content (neither ```json blocks nor raw mcpServers object) found in README."
-        );
-        // Handle case where no JSON content is found
-      }
-    }
-    setIsLoading(false);
+    };
+    window.addEventListener("message", handleAddedServer);
+    vscodeApi.postMessage({
+      type: "aiAssistedSetup",
+      readme: repo.readme,
+    });
+    
+    return;
   };
-
-  
 
   return (
     <Card className="h-full flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300 ease-in-out bg-[var(--vscode-editor-background)] border-[var(--vscode-editorWidget-border)]">
@@ -260,7 +140,11 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
       </CardContent>
       {shouldShowInstallButton && !isLoading && (
         <CardFooter className="pt-2 pb-3 border-t">
-          <Button variant={"outline"} onClick={handleInstallClick} className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]">
+          <Button
+            variant={"outline"}
+            onClick={handleInstallClick}
+            className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+          >
             Install
           </Button>
         </CardFooter>

@@ -39,7 +39,7 @@ export async function searchMcpServers(
   params: SearchMcpServersParams
 ): Promise<SearchMcpServersResponse | undefined> {
   try {
-    const baseQuery = '("mcpServers: {" OR "mcp: {" OR claude_desktop_config.json) AND ("npx" OR "uvx") in:readme language:TypeScript language:Python language:JavaScript';
+    const baseQuery = `mcp in:name,description (npx OR uvx) in:readme archived:false language:TypeScript language:Python language:JavaScript`;
     const fullQuery = params.userQuery ? `${baseQuery} ${params.userQuery}` : baseQuery;
 
     const response = await octokit.search.repos({

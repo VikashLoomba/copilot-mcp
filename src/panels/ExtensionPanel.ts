@@ -24,21 +24,26 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-    vscode.workspace.onDidChangeConfiguration(async e => {
-        if (e.affectsConfiguration("mcp.servers")) {
-            await sendServers(webviewView);
-        }
-    })
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration("mcp.servers")) {
+        await sendServers(webviewView);
+      }
+    });
 
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
+        case "aiAssistedSetup": {
+          const result = await vscodeLMResponse(message.readme);
+          console.log("Result: ", result);
+          break;
+        }
         case "updateServerEnvVar": {
-            console.log('updateServer message: ', message);
+          console.log("updateServer message: ", message);
           const configKey = `mcp.servers.${message.payload.serverName}.env`;
           const config = vscode.workspace.getConfiguration(configKey);
           await config.update(message.payload.envKey, message.payload.newValue);
-        //   await sendServers(webviewView);
+          //   await sendServers(webviewView);
           break;
         }
         case "installServer": {
@@ -51,70 +56,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
             servers,
             vscode.ConfigurationTarget.Global
           );
-          break;
-        }
-        case "getInstallObject": {
-          const readme = message.readme;
-          // show loading notification
-          vscode.window.withProgress(
-            {
-              title: "Installing MCP server with Copilot...",
-              location: vscode.ProgressLocation.Notification,
-            },
-            async (progress, token) => {
-              const installObject: Record<string, any> = await vscodeLMResponse(
-                readme
-              );
-              console.log("installObject", installObject);
-              // Add the mcp server to the config
-              const mcpConfig = vscode.workspace.getConfiguration("mcp");
-              const existingServers: Record<string, any> | undefined =
-                await mcpConfig.get("servers");
-              console.log("existingServers", existingServers);
-              const mcpServerConfig =
-                vscode.workspace.getConfiguration("mcp.servers");
-
-              const serverKey = Object.keys(installObject.mcpServers)[0];
-              progress.report({
-                message: `Adding ${serverKey} MCP server to config...`,
-              });
-              await mcpConfig.update(
-                // first key of installObject
-                `servers`,
-                {
-                  [serverKey]: installObject.mcpServers[serverKey],
-                  ...existingServers,
-                },
-                vscode.ConfigurationTarget.Global
-              );
-
-              progress.report({ message: "Starting MCP server..." });
-              await deleteServer(webviewView, "mcp-server-time");
-            //   // Send the updated list back to the webview
-            //   webviewView.webview.postMessage({
-            //     type: "receivedMCPConfigObject",
-            //     data: await vscode.workspace
-            //       .getConfiguration("mcp")
-            //       .get("servers"),
-            //   });
-              // show a notification
-              const clicked = await vscode.window.showInformationMessage(
-                "MCP server installed successfully",
-                "Start Server"
-              );
-              if (clicked) {
-                // use the first key in the mcpServers object
-
-                console.log("attempting to start server", serverKey);
-                const response = await vscode.commands.executeCommand(
-                  "workbench.mcp.startServer",
-                  serverKey
-                );
-                console.log("response", response);
-              }
-              progress.report({ message: "MCP server installed successfully" });
-            }
-          );
+          webviewView.webview.postMessage({
+            type: "finish"
+          });
           break;
         }
         case "search": {
@@ -221,50 +165,125 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
       `;
   }
 }
+
+function openMcpInstallUri(mcpConfig: object) {
+  // Create the URI with the mcp configuration
+  const uriString = `vscode:mcp/install?${encodeURIComponent(
+    JSON.stringify(mcpConfig)
+  )}`;
+  const uri = vscode.Uri.parse(uriString);
+
+  // Open the URI using VS Code commands
+  return vscode.commands.executeCommand("vscode.open", uri);
+}
+
 const craftedPrompt = vscode.LanguageModelChatMessage.User(`
-You are a helpful assistant that can expertly parse a README.md file and extract the install command for a given open source 
-MCP server. You will be given the contents of a README.md file and you will need to extract the MCP server JSON object 
-specifically containing the key "mcpServers" in a JSON object
-Your response should be the JSON object parsed from the README.md file. If no JSON object is found, your response should simply be "No JSON object found".
-`);
-async function vscodeLMResponse(readme: string) {
-  console.log("vscodeLMResponse starting");
-  try {
-    const models = await vscode.lm.selectChatModels();
-    console.log("models", models);
-    const model = models.find(
-      (m) => m.vendor === "copilot" && (m.id === "gpt-4.1" || m.id === "gpt-4o")
-    );
-    if (!model) {
-      throw new Error("No model found");
+You are a helpful assistant that can expertly parse a README.md file and extract the MCP JSON object for a given open source 
+MCP server. You will be given the contents of a README.md file and you will need to parse the JSON configuration to provide
+that will be used to construct a vscode URI.
+The vscode URI mcp server object is in the same format as you would provide to --add-mcp (i.e. code --add-mcp "{\"name\":\"my-server\",\"command\": \"uvx\",\"args\": [\"mcp-server-fetch\"]}"), 
+and will be used like so:
+// For Insiders, use vscode-insiders instead of code
+const link = \\\`vscode:mcp/install?\${encodeURIComponent(JSON.stringify(obj))}\\\`;
+
+Provide the JSON server configuration in the form {\"name\":\"server-name\",\"command\":...}
+The text below contains correct examples of VSCode mcp server configurations. Your response should
+only include the JSON server configuration, including any required \`inputs\` entries for
+environment variables that should be stored securely, like shown below.
+
+// Example .vscode/mcp.json
+{
+  // 💡 Inputs will be prompted on first server start,
+  //    then stored securely by VS Code.
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "perplexity-key",
+      "description": "Perplexity API Key",
+      "password": true
     }
-    console.log("selected model", model);
-    const request = await model.sendRequest(
-      [craftedPrompt, vscode.LanguageModelChatMessage.User(readme)],
-      //   { tools: toolsArray },
-      {},
-      new vscode.CancellationTokenSource().token
-    );
-    const parsedResponse = await parseChatResponse(request);
-    return parsedResponse;
-  } catch (err) {
-    // Making the chat request might fail because
-    // - model does not exist
-    // - user consent not given
-    // - quota limits were exceeded
-    if (err instanceof vscode.LanguageModelError) {
-      console.log(err.message, err.code, err.cause);
-      if (
-        err.cause instanceof Error &&
-        err.cause.message.includes("off_topic")
-      ) {
-        console.log("off_topic");
+  ],
+  "servers": {
+    // https://github.com/ppl-ai/modelcontextprotocol/
+    "Perplexity": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "PERPLEXITY_API_KEY", "mcp/perplexity-ask"],
+      "env": {
+        "PERPLEXITY_API_KEY": "\${input:perplexity-key}\"
       }
-    } else {
-      // add other error handling logic
-      throw err;
+    },
+    // https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
+    "fetch": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    },
+    "my-remote-server": {
+      "type": "sse",
+      "url": "http://api.contoso.com/sse",
+      "headers": { "VERSION": "1.2" }
     }
   }
+}
+
+`);
+async function vscodeLMResponse(readme: string) {
+  return await vscode.window.withProgress(
+    {
+      title: "Installing MCP server with Copilot...",
+      location: vscode.ProgressLocation.Notification,
+    },
+    async (progress, token) => {
+      try {
+        progress.report({
+          message: `Adding server to config...`,
+        });
+        const models = await vscode.lm.selectChatModels();
+        console.log("models", models);
+        const model = models.find(
+          (m) =>
+            m.vendor === "copilot" && (m.id === "gpt-4.1" || m.id === "gpt-4o")
+        );
+        if (!model) {
+          throw new Error("No model found");
+        }
+
+        const request = await model.sendRequest(
+          [craftedPrompt, vscode.LanguageModelChatMessage.User(readme)],
+          //   { tools: toolsArray },
+          {},
+          new vscode.CancellationTokenSource().token
+        );
+        const parsedResponse = await parseChatResponse(request);
+        progress.report({
+          message: `Configuring server...`,
+        });
+        const cmdResponse = await openMcpInstallUri(parsedResponse);
+        progress.report({
+          message: `Added MCP Server`,
+        });
+        return parsedResponse;
+      } catch (err) {
+        // Making the chat request might fail because
+        // - model does not exist
+        // - user consent not given
+        // - quota limits were exceeded
+        if (err instanceof vscode.LanguageModelError) {
+          console.log(err.message, err.code, err.cause);
+          if (
+            err.cause instanceof Error &&
+            err.cause.message.includes("off_topic")
+          ) {
+            console.log("off_topic");
+          }
+        } else {
+          // add other error handling logic
+          throw err;
+        }
+      }
+    }
+  );
 }
 
 async function parseChatResponse(
@@ -285,6 +304,7 @@ async function parseChatResponse(
         // do nothing
       }
     }
+    // return accumulatedResponse;
   }
   console.log("accumulatedResponse", accumulatedResponse);
   if (accumulatedResponse.startsWith("```json")) {
@@ -294,7 +314,7 @@ async function parseChatResponse(
     const parsedResponse = JSON.parse(jsonString);
     return parsedResponse;
   }
-  return null;
+  return accumulatedResponse;
 }
 
 async function sendServers(webviewView: vscode.WebviewView) {
