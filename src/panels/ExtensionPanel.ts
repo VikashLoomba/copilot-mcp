@@ -24,9 +24,23 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+    vscode.workspace.onDidChangeConfiguration(async e => {
+        if (e.affectsConfiguration("mcp.servers")) {
+            await sendServers(webviewView);
+        }
+    })
+
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
+        case "updateServerEnvVar": {
+            console.log('updateServer message: ', message);
+          const configKey = `mcp.servers.${message.payload.serverName}.env`;
+          const config = vscode.workspace.getConfiguration(configKey);
+          await config.update(message.payload.envKey, message.payload.newValue);
+        //   await sendServers(webviewView);
+          break;
+        }
         case "installServer": {
           const server = message.server.mcpServers;
           const config = vscode.workspace.getConfiguration("mcp");
@@ -53,25 +67,36 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
               );
               console.log("installObject", installObject);
               // Add the mcp server to the config
-              const config = vscode.workspace.getConfiguration("mcp");
-              let servers = config.get("servers", {});
-              // for each key in the installObject, add it to the servers object
-              for (const key in installObject) {
-                servers = { ...servers, ...installObject[key] };
-                // servers[key] = installObject[key];
-              }
-              progress.report({ message: "Adding MCP server to config..." });
-              await config.update(
-                "servers",
-                servers,
+              const mcpConfig = vscode.workspace.getConfiguration("mcp");
+              const existingServers: Record<string, any> | undefined =
+                await mcpConfig.get("servers");
+              console.log("existingServers", existingServers);
+              const mcpServerConfig =
+                vscode.workspace.getConfiguration("mcp.servers");
+
+              const serverKey = Object.keys(installObject.mcpServers)[0];
+              progress.report({
+                message: `Adding ${serverKey} MCP server to config...`,
+              });
+              await mcpConfig.update(
+                // first key of installObject
+                `servers`,
+                {
+                  [serverKey]: installObject.mcpServers[serverKey],
+                  ...existingServers,
+                },
                 vscode.ConfigurationTarget.Global
               );
+
               progress.report({ message: "Starting MCP server..." });
-              // Send the updated list back to the webview
-              webviewView.webview.postMessage({
-                type: "receivedMCPConfigObject",
-                data: { servers },
-              });
+              await deleteServer(webviewView, "mcp-server-time");
+            //   // Send the updated list back to the webview
+            //   webviewView.webview.postMessage({
+            //     type: "receivedMCPConfigObject",
+            //     data: await vscode.workspace
+            //       .getConfiguration("mcp")
+            //       .get("servers"),
+            //   });
               // show a notification
               const clicked = await vscode.window.showInformationMessage(
                 "MCP server installed successfully",
@@ -79,7 +104,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
               );
               if (clicked) {
                 // use the first key in the mcpServers object
-                const serverKey = Object.keys(installObject.mcpServers)[0];
+
                 console.log("attempting to start server", serverKey);
                 const response = await vscode.commands.executeCommand(
                   "workbench.mcp.startServer",
@@ -88,9 +113,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
                 console.log("response", response);
               }
               progress.report({ message: "MCP server installed successfully" });
-              vscode.window.showInformationMessage(
-                "MCP server installed successfully"
-              );
             }
           );
           break;
@@ -123,12 +145,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
             c.includes("mcp")
           );
           console.log("commands", commands);
-          const config = vscode.workspace.getConfiguration("mcp");
-          const servers = config.get("servers", {});
-          webviewView.webview.postMessage({
-            type: "receivedMCPConfigObject",
-            data: { servers },
-          });
+          await sendServers(webviewView);
           break;
         }
         case "deleteServer": {
@@ -143,50 +160,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
             return;
           }
 
-          const config = vscode.workspace.getConfiguration("mcp");
-          let servers = config.get("servers", {} as Record<string, unknown>);
-
-          if (servers[serverKeyToDelete]) {
-            // Create a new object without the server to delete
-            const updatedServers = { ...servers };
-            delete updatedServers[serverKeyToDelete];
-
-            try {
-              await config.update(
-                "servers",
-                updatedServers,
-                vscode.ConfigurationTarget.Global
-              );
-              // Send the updated list back to the webview
-              webviewView.webview.postMessage({
-                type: "receivedMCPConfigObject",
-                data: { servers: updatedServers },
-              });
-              vscode.window.showInformationMessage(
-                `Server '${serverKeyToDelete}' deleted.`
-              );
-            } catch (error: unknown) {
-              const errorMessage =
-                error instanceof Error ? error.message : String(error);
-              vscode.window.showErrorMessage(
-                `Error deleting server '${serverKeyToDelete}': ${errorMessage}`
-              );
-              // Send back the original servers list on error
-              webviewView.webview.postMessage({
-                type: "receivedMCPConfigObject",
-                data: { servers },
-              });
-            }
-          } else {
-            vscode.window.showWarningMessage(
-              `Server '${serverKeyToDelete}' not found in configuration.`
-            );
-            // Send the current list back
-            webviewView.webview.postMessage({
-              type: "receivedMCPConfigObject",
-              data: { servers },
-            });
-          }
+          await deleteServer(webviewView, serverKeyToDelete);
           break;
         }
         // It's good practice to have a default case, even if just for logging
@@ -264,11 +238,11 @@ async function vscodeLMResponse(readme: string) {
     if (!model) {
       throw new Error("No model found");
     }
-    console.log("selected model", model);;
+    console.log("selected model", model);
     const request = await model.sendRequest(
       [craftedPrompt, vscode.LanguageModelChatMessage.User(readme)],
-    //   { tools: toolsArray },
-    {},
+      //   { tools: toolsArray },
+      {},
       new vscode.CancellationTokenSource().token
     );
     const parsedResponse = await parseChatResponse(request);
@@ -321,4 +295,63 @@ async function parseChatResponse(
     return parsedResponse;
   }
   return null;
+}
+
+async function sendServers(webviewView: vscode.WebviewView) {
+  await deleteServer(webviewView, "mcp-server-time");
+  const config = vscode.workspace.getConfiguration("mcp");
+  const servers = config.get("servers", {} as Record<string, any>);
+  if (servers["mcp-server-time"]) {
+    delete servers["mcp-server-time"];
+  }
+  webviewView.webview.postMessage({
+    type: "receivedMCPConfigObject",
+    data: { servers },
+  });
+}
+
+async function deleteServer(
+  webviewView: vscode.WebviewView,
+  serverKeyToDelete: string
+) {
+  const config = vscode.workspace.getConfiguration("mcp");
+  let servers = config.get("servers", {} as Record<string, unknown>);
+
+  if (servers[serverKeyToDelete]) {
+    // Create a new object without the server to delete
+    const updatedServers = { ...servers };
+    delete updatedServers[serverKeyToDelete];
+    if (updatedServers["mcp-server-time"]) {
+      delete updatedServers["mcp-server-time"];
+    }
+
+    try {
+      await config.update(
+        "servers",
+        updatedServers,
+        vscode.ConfigurationTarget.Global
+      );
+      // Send the updated list back to the webview
+      webviewView.webview.postMessage({
+        type: "receivedMCPConfigObject",
+        data: { servers: updatedServers },
+      });
+      if (serverKeyToDelete !== "mcp-server-time") {
+        vscode.window.showInformationMessage(
+          `Server '${serverKeyToDelete}' deleted.`
+        );
+      }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(
+        `Error deleting server '${serverKeyToDelete}': ${errorMessage}`
+      );
+      // Send back the original servers list on error
+      webviewView.webview.postMessage({
+        type: "receivedMCPConfigObject",
+        data: { servers },
+      });
+    }
+  }
 }

@@ -1,9 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Trash2, Terminal } from 'lucide-react';
-import { useVscodeApi } from '../contexts/VscodeApiContext';
-import { cn } from '@/lib/utils';
+import React, { useEffect, useState } from "react";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, Info, Terminal, Trash2Icon } from "lucide-react";
+import { useVscodeApi } from "../contexts/VscodeApiContext";
+import { cn } from "@/lib/utils";
+import { Badge } from "./ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 // Define the structure of a server object based on the example provided
 interface McpServer {
@@ -23,53 +39,84 @@ interface McpServer {
 
 const InstalledMCPServers: React.FC = () => {
   const [servers, setServers] = useState<Record<string, McpServer>>({});
+  // const [isEditing] = useState(false);
+  // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [activeServerName, setActiveServerName] = useState<string | null>(null);
+  const [serverToDelete, setServerToDelete] = useState<McpServer | null>(null);
   const vscodeApi = useVscodeApi();
 
   useEffect(() => {
     // Ensure vscodeApi is available before trying to use it or set up listeners
     if (!vscodeApi) {
-        // If API is not yet available (e.g. provider hasn't initialized, or in non-webview context where mock failed)
-        // you might want to return or show a specific state. The hook should throw if it truly can't get an API.
-        console.warn("VSCode API not available from context yet.");
-        return;
+      // If API is not yet available (e.g. provider hasn't initialized, or in non-webview context where mock failed)
+      // you might want to return or show a specific state. The hook should throw if it truly can't get an API.
+      console.warn("VSCode API not available from context yet.");
+      return;
     }
 
     // Request initial data
-    vscodeApi.postMessage({ type: 'requestMCPConfigObject' });
+    vscodeApi.postMessage({ type: "requestMCPConfigObject" });
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data; // The data VS Code sent
       switch (message.type) {
-        case 'receivedMCPConfigObject':
+        case "receivedMCPConfigObject":
           if (message.data && message.data.servers) {
             setServers(message.data.servers);
           }
           break;
-        case 'error': // Handle potential errors from the backend
-            console.error('Error from extension:', message.data?.message);
-            // Optionally, display an error message to the user in the UI
-            break;
+        case "error": // Handle potential errors from the backend
+          console.error("Error from extension:", message.data?.message);
+          // Optionally, display an error message to the user in the UI
+          break;
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
 
     // Cleanup listener on component unmount
     return () => {
-      window.removeEventListener('message', handleMessage);
+      window.removeEventListener("message", handleMessage);
     };
     // Re-run effect if vscodeApi instance changes (though it shouldn't after initial load)
-  }, [vscodeApi]); 
+  }, [vscodeApi]);
+
+  const handleEnvVarChange = (serverName: string, envKey: string, newValue: string) => {
+    setServers(prevServers => {
+      const serverToUpdate = prevServers[serverName];
+      if (!serverToUpdate) return prevServers;
+
+      const updatedEnv = { ...(serverToUpdate.env || {}), [envKey]: newValue };
+      const updatedServer = { ...serverToUpdate, env: updatedEnv };
+
+      return {
+        ...prevServers,
+        [serverName]: updatedServer,
+      };
+    });
+    if (vscodeApi) {
+      vscodeApi.postMessage({
+        type: "updateServerEnvVar", // Ensure your extension handles this message type
+        payload: {
+          serverName,
+          envKey,
+          newValue,
+        },
+      });
+    } else {
+      console.error("VSCode API not available to update env var.");
+    }
+  };
 
   const handleDeleteServer = (serverKey: string) => {
     if (vscodeApi) {
       vscodeApi.postMessage({
-        type: 'deleteServer',
+        type: "deleteServer",
         key: serverKey,
       });
     } else {
-        // This case should ideally not be reached if the hook and provider are working correctly
-        console.error('VSCode API not available from context to delete server.');
+      // This case should ideally not be reached if the hook and provider are working correctly
+      console.error("VSCode API not available from context to delete server.");
     }
   };
 
@@ -78,97 +125,183 @@ const InstalledMCPServers: React.FC = () => {
   }
 
   if (Object.keys(servers).length === 0) {
-    return <p className="text-center  mt-4">No MCP servers installed. Listening for updates...</p>;
+    return (
+      <p className="text-center  mt-4">
+        No MCP servers installed. Listening for updates...
+      </p>
+    );
   }
+
+  const renderCardHeader = (name: string, serverConfig: McpServer) => (
+    <div className="flex items-center justify-between gap-3 group w-full">
+      {/* Left side with chevron, icon and server info */}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex-shrink-0 flex items-center justify-center w-6">
+          <Terminal
+            size={16}
+            className={cn("text-[var(--vscode-debugIcon-startForeground)]")}
+          />
+        </div>
+
+        <div className="flex-1 min-w-0 mr-2">
+          <h3 className="text-sm font-medium truncate leading-tight">
+            {name}
+          </h3>
+          <p className="text-xs text-[var(--vscode-descriptionForeground)] truncate leading-tight">
+            {serverConfig.command
+              ? `${serverConfig.command} ${
+                  serverConfig.args ? serverConfig.args.join(" ") : ""
+                }`
+              : null}
+          </p>
+        </div>
+      </div>
+
+      {/* Right side with badges and switch */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <Badge
+          variant={"default"}
+          className={cn(
+            "text-xs py-0.5 px-2 h-6 min-w-14 flex items-center justify-center",
+            "bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] hover:bg-[var(--vscode-badge-background)]"
+          )}
+        >
+          {serverConfig.command && "Process"}
+        </Badge>
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
-      {Object.entries(servers).map(([key, server]) => (
-        <Card
-          key={key}
-          className={cn(
-            "bg-[var(--vscode-editor-background)] border border-[var(--vscode-widget-border)]",
-            "hover:border-[var(--vscode-focusBorder)]/50 flex flex-col"
-          )}
-        >
-          <CardHeader className="p-4">
-            <div className="flex items-start justify-between gap-4">
-              {/* Icon */}
-              <div className="flex-shrink-0 pt-0.5"> {/* pt-0.5 to align icon slightly better with multi-line text */}
-                <Terminal
-                  size={28} // Increased icon size
-                  className="text-[var(--vscode-debugIcon-startForeground)]"
-                />
-              </div>
-
-              {/* Title/Type Block - flex-grow */}
-              <div className="flex-grow min-w-0"> {/* min-w-0 for truncation */}
-                <CardTitle className="text-base font-semibold truncate leading-tight">
-                  {server.name || key}
-                </CardTitle>
-                {server.type && (
-                  <CardDescription className="text-sm truncate leading-tight pt-1">
-                    Type: {server.type}
-                  </CardDescription>
-                )}
-              </div>
-
-              {/* Delete Button */}
-              <div className="flex-shrink-0">
-                <Button
-                  variant="ghost" // More subtle button variant
-                  size="icon"
-                  onClick={() => handleDeleteServer(key)}
-                  aria-label={`Delete ${server.name || key} server`}
-                  className={cn(
-                    "h-8 w-8", // Slightly larger button
-                    "text-[var(--vscode-icon-foreground)] hover:bg-[var(--vscode-toolbar-hoverBackground)]" // Themed
-                  )}
-                >
-                  <Trash2 className="h-5 w-5" /> {/* Slightly larger trash icon */}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-2 text-sm flex-grow"> {/* Adjusted padding */}
-            <div className="space-y-4"> {/* Increased spacing between content sections */}
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider ">Command</span>
-                <code className="block w-full truncate mt-0.5 px-2 py-1 bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] rounded font-mono text-xs">
-                  {server.command}
-                </code>
-              </div>
-
-              {server.args && server.args.length > 0 && (
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-wider ">Arguments</span>
-                  <code className="block w-full truncate mt-0.5 px-2 py-1 bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] rounded font-mono text-xs">
-                    {server.args.join(' ')}
-                  </code>
-                </div>
-              )}
-
-              {server.env && Object.keys(server.env).length > 0 && (
-                <div> {/* Ensured this div is present for consistent spacing from space-y-4 */}
-                  <h4 className="text-xs font-semibold uppercase tracking-wider mb-0.5">Environment Variables:</h4>
-                  <div className="space-y-0.5 max-h-24 overflow-y-auto p-1 rounded bg-[var(--vscode-input-background)] border border-[var(--vscode-input-border)]">
-                    {Object.entries(server.env).map(([envKey, envValue]) => (
-                      <div key={envKey} className="grid grid-cols-[auto_1fr] gap-x-2 text-xs items-center">
-                        <span className="font-medium truncate text-[var(--vscode-editor-foreground)]">{envKey}:</span>
-                        <span className="truncate ">
-                          {envValue.includes('KEY') || envValue.includes('SECRET') ? '********' : envValue}
-                        </span>
-                      </div>
-                    ))}
+      {Object.entries(servers).map(([name, server], index) => (
+        <React.Fragment key={`${name}-${index}`}>
+          <Card
+            className={cn(
+              "w-full h-auto overflow-hidden group transition-all duration-500",
+              "bg-[var(--vscode-editor-background)] border-[var(--vscode-editorWidget-border)]",
+              "hover:shadow-sm hover:border-[var(--vscode-focusBorder)]/50"
+            )}
+          >
+            <CardHeader className="p-3">
+              <Collapsible open={activeServerName === name}>
+                <CollapsibleTrigger asChild>
+                  <div
+                    className={cn(
+                      "cursor-pointer w-full transition-all duration-500",
+                      activeServerName !== name &&
+                        "hover:bg-[var(--vscode-list-hoverBackground)]/50 rounded p-1"
+                    )}
+                    onClick={() =>
+                      setActiveServerName((prev) =>
+                        prev === name ? null : name
+                      )
+                    }
+                  >
+                    {renderCardHeader(name, server)}
                   </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                </CollapsibleTrigger>
+
+                <CollapsibleContent>
+                {server.env && Object.keys(server.env).length > 0 && (
+                    <div className="mt-2">
+                      <h4 className="text-xs font-medium text-[var(--vscode-foreground)] mb-1.5 px-1">
+                        Environment Variables
+                      </h4>
+                      <div className="space-y-1.5 px-1">
+                        {Object.entries(server.env).map(([key, value]) => (
+                          <div key={key} className="flex items-center gap-2">
+                            <Label
+                              htmlFor={`${name}-${key}-env`}
+                              className="text-xs text-[var(--vscode-descriptionForeground)] w-2/5 sm:w-1/3 flex-shrink-0 truncate"
+                              title={key}
+                            >
+                              {key}
+                            </Label>
+                            <Input
+                              id={`${name}-${key}-env`}
+                              type="text"
+                              value={value}
+                              onChange={(e) => handleEnvVarChange(name, key, e.target.value)}
+                              className="flex-grow h-7 text-xs bg-[var(--vscode-input-background)] text-[var(--vscode-input-foreground)] border-[var(--vscode-input-border)] focus-visible:ring-1 focus-visible:ring-[var(--vscode-focusBorder)] rounded-sm shadow-none px-2 py-1"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <Button
+                    variant={"link"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setServerToDelete({...server, name});
+                    }}
+                    className="text-[var(--vscode-errorForeground)] hover:text-[var(--vscode-errorForeground)]/80 p-1 mt-2 flex items-center gap-1"
+                  >
+                    <Trash2Icon size={16} /> Delete
+                  </Button>
+                </CollapsibleContent>
+              </Collapsible>
+            </CardHeader>
+          </Card>
+
+          {/* Delete confirmation dialog */}
+          <Dialog
+            open={!!serverToDelete}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setServerToDelete(null);
+            }}
+          >
+            <DialogContent className="max-w-[400px] bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] border-[var(--vscode-widget-border)]">
+              <DialogHeader>
+                <DialogTitle className="text-lg flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-[var(--vscode-errorForeground)]" />
+                  Remove Server
+                </DialogTitle>
+                <DialogDescription className="text-[var(--vscode-descriptionForeground)]">
+                  Are you sure you want to remove the server "
+                  {serverToDelete?.name}"?
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="bg-[var(--vscode-errorForeground)]/10 p-3 rounded flex items-start gap-2 my-2">
+                <Info className="h-4 w-4 text-[var(--vscode-errorForeground)] mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-[var(--vscode-errorForeground)]">
+                  This action cannot be undone. The server will be removed from
+                  your configuration.
+                </p>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setServerToDelete(null)}
+                  className="bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (serverToDelete) {
+                      handleDeleteServer(serverToDelete.name);
+                      if (activeServerName === serverToDelete.name) {
+                        setActiveServerName(null);
+                      }
+                      setServerToDelete(null);
+                    }
+                  }}
+                  className="bg-[var(--vscode-errorForeground)] hover:bg-[var(--vscode-errorForeground)]/90 text-white"
+                >
+                  Remove Server
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </React.Fragment>
       ))}
     </div>
   );
 };
 
-export default InstalledMCPServers; 
+export default InstalledMCPServers;

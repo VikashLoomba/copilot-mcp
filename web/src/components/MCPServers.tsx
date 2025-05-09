@@ -8,10 +8,10 @@ const MCPServers: React.FC = () => {
     <div className="p-4">
       <Tabs defaultValue="installed" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="installed" className="data-[state=active]:bg-[var(--vscode-list-activeSelectionBackground)]">
+          <TabsTrigger value="installed" className="transition-all duration-300 data-[state=active]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=active]:border-[var(--vscode-focusBorder)]">
             Installed
           </TabsTrigger>
-          <TabsTrigger value="search" className="data-[state=active]:bg-[var(--vscode-list-activeSelectionBackground)]">
+          <TabsTrigger value="search" className="transition-all duration-300 data-[state=active]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=active]:border-[var(--vscode-focusBorder)]">
             Search
           </TabsTrigger>
         </TabsList>

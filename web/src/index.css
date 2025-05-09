@@ -1,117 +1,120 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+
+@plugin 'tailwindcss-animate';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: var(--vscode-editor-background);
-  --foreground: var(--vscode-editor-foreground);
-  --card: var(--vscode-editorWidget-background);
-  --card-foreground: var(--vscode-editorWidget-foreground);
-  --popover: var(--vscode-editorHoverWidget-background);
-  --popover-foreground: var(--vscode-editorHoverWidget-foreground);
-  --primary: var(--vscode-button-background);
-  --primary-foreground: var(--vscode-button-foreground);
-  --secondary: var(--vscode-button-secondaryBackground);
-  --secondary-foreground: var(--vscode-button-secondaryForeground);
-  --muted: var(--vscode-editorGroupHeader-tabsBackground);
-  --muted-foreground: var(--vscode-disabledForeground);
-  --accent: var(--vscode-activityBarBadge-background);
-  --accent-foreground: var(--vscode-activityBarBadge-foreground);
-  --destructive: var(--vscode-editorError-foreground);
-  --border: var(--vscode-widget-border);
-  --input: var(--vscode-input-background);
-  --ring: var(--vscode-focusBorder);
-  --chart-1: var(--vscode-charts-red);
-  --chart-2: var(--vscode-charts-blue);
-  --chart-3: var(--vscode-charts-yellow);
-  --chart-4: var(--vscode-charts-orange);
-  --chart-5: var(--vscode-charts-green);
-  --sidebar: var(--vscode-sideBar-background);
-  --sidebar-foreground: var(--vscode-sideBar-foreground);
-  --sidebar-primary: var(--vscode-activityBar-background);
-  --sidebar-primary-foreground: var(--vscode-activityBar-foreground);
-  --sidebar-accent: var(--vscode-activityBar-activeBackground);
-  --sidebar-accent-foreground: var(--vscode-activityBar-foreground);
-  --sidebar-border: var(--vscode-sideBar-border);
-  --sidebar-ring: var(--vscode-activityBar-activeBorder);
+  --background: hsl(224 71% 4%);
+  --foreground: hsl(213 31% 91%);
+  --muted: hsl(223 47% 11%);
+  --muted-foreground: hsl(215.4 16.3% 56.9%);
+  --accent: hsl(216 34% 17%);
+  --accent-foreground: hsl(210 40% 98%);
+  --popover: hsl(224 71% 4%);
+  --popover-foreground: hsl(215 20.2% 65.1%);
+  --border: hsl(216 34% 17%);
+  --input: hsl(216 34% 17%);
+  --card: hsl(224 71% 4%);
+  --card-foreground: hsl(213 31% 91%);
+  --primary: hsl(210 40% 98%);
+  --primary-foreground: hsl(222.2 47.4% 1.2%);
+  --secondary: hsl(222.2 47.4% 11.2%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 63% 31%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --ring: hsl(216 34% 17%);
 }
 
 .dark {
-  /* Dark theme values are automatically handled by VS Code's theming system */
-  /* No need to explicitly set dark mode variables as they will respect VS Code's theme */
-  --radius: 0.625rem;
-  --background: var(--vscode-editor-background);
-  --foreground: var(--vscode-editor-foreground);
-  --card: var(--vscode-editorWidget-background);
-  --card-foreground: var(--vscode-editorWidget-foreground);
-  --popover: var(--vscode-editorHoverWidget-background);
-  --popover-foreground: var(--vscode-editorHoverWidget-foreground);
-  --primary: var(--vscode-button-background);
-  --primary-foreground: var(--vscode-button-foreground);
-  --secondary: var(--vscode-button-secondaryBackground);
-  --secondary-foreground: var(--vscode-button-secondaryForeground);
-  --muted: var(--vscode-editorGroupHeader-tabsBackground);
-  --muted-foreground: var(--vscode-disabledForeground);
-  --accent: var(--vscode-activityBarBadge-background);
-  --accent-foreground: var(--vscode-activityBarBadge-foreground);
-  --destructive: var(--vscode-editorError-foreground);
-  --border: var(--vscode-widget-border);
-  --input: var(--vscode-input-background);
-  --ring: var(--vscode-focusBorder);
-  --chart-1: var(--vscode-charts-red);
-  --chart-2: var(--vscode-charts-blue);
-  --chart-3: var(--vscode-charts-yellow);
-  --chart-4: var(--vscode-charts-orange);
-  --chart-5: var(--vscode-charts-green);
-  --sidebar: var(--vscode-sideBar-background);
-  --sidebar-foreground: var(--vscode-sideBar-foreground);
-  --sidebar-primary: var(--vscode-activityBar-background);
-  --sidebar-primary-foreground: var(--vscode-activityBar-foreground);
-  --sidebar-accent: var(--vscode-activityBar-activeBackground);
-  --sidebar-accent-foreground: var(--vscode-activityBar-foreground);
-  --sidebar-border: var(--vscode-sideBar-border);
-  --sidebar-ring: var(--vscode-activityBar-activeBorder);
+  --background: hsl(224 71% 4%);
+  --foreground: hsl(213 31% 91%);
+  --muted: hsl(223 47% 11%);
+  --muted-foreground: hsl(215.4 16.3% 56.9%);
+  --accent: hsl(216 34% 17%);
+  --accent-foreground: hsl(210 40% 98%);
+  --popover: hsl(224 71% 4%);
+  --popover-foreground: hsl(215 20.2% 65.1%);
+  --border: hsl(216 34% 17%);
+  --input: hsl(216 34% 17%);
+  --card: hsl(224 71% 4%);
+  --card-foreground: hsl(213 31% 91%);
+  --primary: hsl(210 40% 98%);
+  --primary-foreground: hsl(222.2 47.4% 1.2%);
+  --secondary: hsl(222.2 47.4% 11.2%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 63% 31%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --ring: hsl(216 34% 17%);
 }
+
+@layer base {
+
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/*
+  ---break---
+*/
 
 @layer base {
   * {
