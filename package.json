@@ -17,6 +17,9 @@
   "engines": {
     "vscode": "^1.99.0"
   },
+  "sponsor": {
+    "url": "https://github.com/sponsors/VikashLoomba"
+  },
   "categories": [
     "AI",
     "Chat",
