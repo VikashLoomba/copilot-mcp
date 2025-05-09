@@ -256,7 +256,6 @@ Your response should be the JSON object parsed from the README.md file. If no JS
 async function vscodeLMResponse(readme: string) {
   console.log("vscodeLMResponse starting");
   try {
-    const tools = vscode.lm.tools;
     const models = await vscode.lm.selectChatModels();
     console.log("models", models);
     const model = models.find(
@@ -265,17 +264,11 @@ async function vscodeLMResponse(readme: string) {
     if (!model) {
       throw new Error("No model found");
     }
-    console.log("selected model", model);
-    const toolsArray: vscode.LanguageModelChatTool[] = tools.map((t) => ({
-      name: t.name,
-      inputSchema: t.inputSchema,
-      description: t.description,
-      // execute: t.execute
-    }));
-    console.log("toolsArray", toolsArray);
+    console.log("selected model", model);;
     const request = await model.sendRequest(
       [craftedPrompt, vscode.LanguageModelChatMessage.User(readme)],
-      { tools: toolsArray },
+    //   { tools: toolsArray },
+    {},
       new vscode.CancellationTokenSource().token
     );
     const parsedResponse = await parseChatResponse(request);
