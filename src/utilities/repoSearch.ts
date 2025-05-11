@@ -1,5 +1,3 @@
-
-
 // Define interfaces for better type safety and clarity
 export interface SearchMcpServersParams {
   userQuery?: string; // Optional: user's specific search keywords
@@ -21,7 +19,7 @@ export interface McpServerResult {
   stars: number;
   author: McpServerAuthor;
   description: string | null;
-  readme: string; // A short snippet of the README
+  readme?: string; // Made optional, as it won't be populated here
   language: string | null;
   updatedAt: string;
 }
@@ -31,8 +29,6 @@ export interface SearchMcpServersResponse {
   totalCount: number;
   hasMore: boolean;
 }
-
-const README_EXCERPT_LENGTH = 200; // Max length for README excerpt
 
 export async function searchMcpServers(
   octokit: any,
@@ -57,23 +53,8 @@ export async function searchMcpServers(
     for (const repo of response.data.items) {
       if (!repo.owner) {continue;}
 
-      let readmeContent = "README not found or is empty.";
-      try {
-        const readmeResponse = await octokit.repos.getReadme({
-          owner: repo.owner.login,
-          repo: repo.name,
-        });
-        const decodedContent = Buffer.from(readmeResponse.data.content, 'base64').toString();
-        readmeContent = decodedContent;
-      } catch (readmeError: any) {
-        // Log specific error for README fetching, but don't let it stop processing other repos
-        if (readmeError.status === 404) {
-          console.warn(`README not found for ${repo.full_name}.`);
-          readmeContent = "README not available for this repository.";
-        } else {
-          readmeContent = "Error fetching README.";
-        }
-      }
+      // README fetching logic is removed from here.
+      // The RepoCard will request it separately.
 
       processedResults.push({
         id: repo.id,
@@ -87,7 +68,6 @@ export async function searchMcpServers(
           avatarUrl: repo.owner.avatar_url,
         },
         description: repo.description,
-        readme: readmeContent,
         language: repo.language,
         updatedAt: repo.updated_at,
       });

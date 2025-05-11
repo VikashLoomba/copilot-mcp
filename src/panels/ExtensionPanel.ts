@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { searchMcpServers } from "../utilities/repoSearch";
+import { type TelemetryReporter } from "@vscode/extension-telemetry";
 
 export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "copilotMcpView";
@@ -9,7 +10,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _accessToken: string
+    private readonly _accessToken: string,
+    private readonly _telemetryReporter: TelemetryReporter,
+    private readonly _session: vscode.AuthenticationSession
   ) {}
 
   resolveWebviewView(
@@ -21,6 +24,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [this._extensionUri],
     };
+
+    
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
@@ -34,8 +39,36 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
         case "aiAssistedSetup": {
-          const result = await vscodeLMResponse(message.readme);
-          console.log("Result: ", result);
+          this._telemetryReporter.sendTelemetryEvent("attemptMcpServerInstall", {
+            accountId: this._session.account.id,
+            accountLabel: this._session.account.label,
+            repoId: message.payload.repo?.id,
+            repoName: message.payload.repo?.fullName,
+            repoUrl: message.payload.repo?.url,
+          });
+          // Expecting payload.repo and payload.readme
+          const readmeToParse = message.payload.repo.readme; 
+          if (!readmeToParse) {
+            vscode.window.showErrorMessage("README content is missing in aiAssistedSetup message.");
+            webviewView.webview.postMessage({
+              type: "finishInstall", // Notify webview to stop loading
+              payload: { fullName: message.payload.repo?.fullName },
+            });
+            return;
+          }
+          try {
+            const result = await vscodeLMResponse(readmeToParse, webviewView, message.payload.repo?.fullName);
+            console.log("Result: ", result);
+            // Potentially send a success message or the result back to the webview
+          } catch (error) {
+            console.error("Error during AI Assisted Setup: ", error);
+            // Notify webview about the error
+          } finally {
+            webviewView.webview.postMessage({
+              type: "finishInstall",
+              payload: { fullName: message.payload.repo?.fullName }, // Send fullName for identification
+            });
+          }
           break;
         }
         case "updateServerEnvVar": {
@@ -46,23 +79,54 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
           //   await sendServers(webviewView);
           break;
         }
-        case "installServer": {
-          const server = message.server.mcpServers;
-          const config = vscode.workspace.getConfiguration("mcp");
-          let servers = config.get("servers", {});
-          servers = { ...servers, ...server };
-          await config.update(
-            "servers",
-            servers,
-            vscode.ConfigurationTarget.Global
-          );
-          webviewView.webview.postMessage({
-            type: "finish"
-          });
+        case "requestReadme": {
+          const { fullName, url: repoUrl } = message.payload; // repoUrl is kept for now, though not used for owner/repo extraction
+          if (!fullName) {
+            vscode.window.showErrorMessage("Repository fullName not provided for README request.");
+            return;
+          }
+          try {
+            const octokit = await this.getOctokit();
+            // Extract owner and repo from fullName (e.g., "owner/repo")
+            const parts = fullName.split('/');
+            if (parts.length !== 2) {
+              throw new Error(`Invalid repository fullName format: ${fullName}. Expected 'owner/repo'.`);
+            }
+            const owner = parts[0];
+            const repo = parts[1];
+
+            const readmeData = await octokit.repos.getReadme({ owner, repo });
+            const readmeContent = Buffer.from(readmeData.data.content, 'base64').toString('utf8');
+            
+            webviewView.webview.postMessage({
+              type: "receivedReadme",
+              payload: {
+                fullName: fullName, // Send back the fullName for matching
+                readme: readmeContent,
+              },
+            });
+          } catch (error) {
+            console.error(`Failed to fetch README for ${fullName}:`, error);
+            webviewView.webview.postMessage({
+              type: "receivedReadme",
+              payload: {
+                fullName: fullName,
+                readme: null, // Indicate failure
+                error: error instanceof Error ? error.message : "Unknown error fetching README"
+              },
+            });
+          }
           break;
         }
         case "search": {
           console.log("search", message.query);
+          this._telemetryReporter.sendTelemetryEvent("searchMcpServers", {
+            query: message.query,
+            page: message.page?.toString() || "1",
+            perPage: message.perPage?.toString() || "10",
+            accountId: this._session.account.id,
+            accountLabel: this._session.account.label 
+          });
           const page = message.page || 1;
           const perPage = message.perPage || 10;
           const searchResponse = await searchMcpServers(
@@ -228,7 +292,7 @@ environment variables that should be stored securely, like shown below.
 }
 
 `);
-async function vscodeLMResponse(readme: string) {
+async function vscodeLMResponse(readme: string, webviewView?: vscode.WebviewView, repoFullName?: string) {
   return await vscode.window.withProgress(
     {
       title: "Installing MCP server with Copilot...",
@@ -263,6 +327,16 @@ async function vscodeLMResponse(readme: string) {
         progress.report({
           message: `Added MCP Server`,
         });
+        // Optionally, notify webview upon successful addition if webviewView is provided
+        if (webviewView && repoFullName) {
+          webviewView.webview.postMessage({
+            type: "serverInstallSuccess", // Or a more generic success message
+            payload: { 
+              fullName: repoFullName,
+              serverConfig: parsedResponse 
+            }
+          });
+        }
         return parsedResponse;
       } catch (err) {
         // Making the chat request might fail because

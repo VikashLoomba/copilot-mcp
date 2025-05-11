@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -32,7 +32,7 @@ interface SearchResult {
   stars: number;
   author: McpServerAuthor;
   description: string | null;
-  readme: string;
+  readme: string; // This will now be populated by a message
   language: string | null;
   updatedAt: string;
 }
@@ -43,7 +43,49 @@ interface RepoCardProps {
 
 const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [readmeContent, setReadmeContent] = useState<string | null>(null);
+  const [shouldShowInstallButton, setShouldShowInstallButton] = useState(false);
   const vscodeApi = useVscodeApi();
+
+  useEffect(() => {
+    // Request README content when the component mounts or repo changes
+    vscodeApi.postMessage({
+      type: "requestReadme",
+      payload: {
+        fullName: repo.fullName, // Still useful for matching responses
+        ownerLogin: repo.author.name, // Send owner.login (assuming author.name is owner.login)
+        repoName: repo.name,         // Send repo.name
+        url: repo.url, // url of the repo, kept for potential future use or context
+      },
+    });
+
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data;
+      console.log("Received message:", message);
+      if (message.type === "receivedReadme" && message.payload.fullName === repo.fullName) {
+        const currentReadmeContent = message.payload.readme;
+        setReadmeContent(currentReadmeContent);
+        if (currentReadmeContent) {
+          const showButton =
+            currentReadmeContent.includes(`"command": "uvx"`) ||
+            currentReadmeContent.includes(`"command": "npx"`) ||
+            currentReadmeContent.includes(`"command": "pypi"`) ||
+            currentReadmeContent.includes(`"command": "docker"`);
+          setShouldShowInstallButton(showButton);
+        } else {
+          setShouldShowInstallButton(false);
+        }
+      } else if (message.type === "finishInstall" && message.payload.fullName === repo.fullName) {
+        setIsLoading(false);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [repo.id, repo.fullName, repo.author.name, repo.name, repo.url, vscodeApi]);
+
   // Helper function to format date (can be expanded)
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString(undefined, {
@@ -55,30 +97,23 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
 
   const fallbackName = repo.author.name.substring(0, 2).toUpperCase();
 
-  const shouldShowInstallButton =
-    repo.readme &&
-    (repo.readme.includes('"command": "uvx"') ||
-      repo.readme.includes('"command": "npx"') ||
-      repo.readme.includes('"command": "docker"'));
+  // shouldShowInstallButton is now a state variable updated by useEffect
 
   const handleInstallClick = async () => {
     setIsLoading(true);
-    if (!repo.readme) {
-      console.error("README content is not available.");
+    if (!readmeContent) {
+      console.error("README content is not available for install.");
+      setIsLoading(false);
       return;
     }
-    const handleAddedServer = (message: MessageEvent) => {
-      if (message.type === "finish") {
-        setIsLoading(false);
-      }
-    };
-    window.addEventListener("message", handleAddedServer);
+    // Listener for "finish" is now part of the main message handler
     vscodeApi.postMessage({
       type: "aiAssistedSetup",
-      readme: repo.readme,
+      payload: {
+        repo: { ...repo, readme: readmeContent }, // Send the full repo object with the fetched readme
+      }
     });
-    
-    return;
+    // setIsLoading(false) will be handled by 'finishInstall' message
   };
 
   return (
@@ -130,11 +165,15 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             README Snippet:
           </h4>
           <div className="text-xs p-2 border rounded-md max-h-24 overflow-y-auto prose prose-sm">
-            <ReactMarkdown
-              children={repo.readme}
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-            />
+            {readmeContent ? (
+              <ReactMarkdown
+                children={readmeContent}
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+              />
+            ) : (
+              <p>Loading README...</p>
+            )}
           </div>
         </div>
       </CardContent>
