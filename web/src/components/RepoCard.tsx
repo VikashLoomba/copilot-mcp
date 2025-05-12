@@ -63,14 +63,15 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
       const message = event.data;
       console.log("Received message:", message);
       if (message.type === "receivedReadme" && message.payload.fullName === repo.fullName) {
-        const currentReadmeContent = message.payload.readme;
+        const currentReadmeContent: string = message.payload.readme;
         setReadmeContent(currentReadmeContent);
         if (currentReadmeContent) {
+          const readmeLines = currentReadmeContent.replace(/\n/g, "");
           const showButton =
-            currentReadmeContent.includes(`"command": "uvx"`) ||
-            currentReadmeContent.includes(`"command": "npx"`) ||
-            currentReadmeContent.includes(`"command": "pypi"`) ||
-            currentReadmeContent.includes(`"command": "docker"`);
+            readmeLines.includes(`"command": "uvx"`) ||
+            readmeLines.includes(`"command": "npx"`) ||
+            readmeLines.includes(`"command": "pypi"`) ||
+            readmeLines.includes(`"command": "docker"`);
           setShouldShowInstallButton(showButton);
         } else {
           setShouldShowInstallButton(false);

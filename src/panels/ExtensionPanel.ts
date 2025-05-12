@@ -38,13 +38,16 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
+        case "getNewMcpServers": {
+
+        }
         case "aiAssistedSetup": {
           this._telemetryReporter.sendTelemetryEvent("attemptMcpServerInstall", {
             accountId: this._session.account.id,
             accountLabel: this._session.account.label,
             repoId: message.payload.repo?.id,
-            repoName: message.payload.repo?.fullName,
-            repoUrl: message.payload.repo?.url,
+            repoName: message.payload.repo?.name,
+            repoUrl: message.payload.repo?.url.split("//")[1],
           });
           // Expecting payload.repo and payload.readme
           const readmeToParse = message.payload.repo.readme; 
@@ -72,10 +75,14 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "updateServerEnvVar": {
-          console.log("updateServer message: ", message);
-          const configKey = `mcp.servers.${message.payload.serverName}.env`;
-          const config = vscode.workspace.getConfiguration(configKey);
-          await config.update(message.payload.envKey, message.payload.newValue);
+          try {
+            console.log("updateServer message: ", message);
+            const configKey = `mcp.servers.${message.payload.serverName}.env`;
+            const config = vscode.workspace.getConfiguration(configKey);
+            await config.update(message.payload.envKey, message.payload.newValue);
+          } catch (error) {
+            
+          }
           //   await sendServers(webviewView);
           break;
         }
@@ -168,7 +175,11 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
             return;
           }
 
-          await deleteServer(webviewView, serverKeyToDelete);
+          try {
+            await deleteServer(webviewView, serverKeyToDelete);
+          } catch (error) {
+            
+          }
           break;
         }
         // It's good practice to have a default case, even if just for logging
@@ -292,6 +303,96 @@ environment variables that should be stored securely, like shown below.
 }
 
 `);
+const responseFormatPrompt = vscode.LanguageModelChatMessage.User(`
+  The response MUST be in the form of a JSON object conforming to the following JSON schema.
+  JSON Schema:
+  {
+  "name": "server_configuration",
+  "schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Unified Server Configuration",
+    "description": "Defines a single server configuration. The 'type' and 'name' properties are mandatory. The 'type' property dictates which other fields are relevant and potentially required. The LLM must carefully read the descriptions of each property to determine the correct structure based on the chosen 'type'. Any user-specific configurable values (like API keys or user-specific/user-configurable values) should be declared in the 'inputs' array and referenced elsewhere using the \${input:<id_from_inputs_array>} syntax.",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "REQUIRED. A user-friendly and unique name for this server configuration."
+      },
+      "type": {
+        "type": "string",
+        "enum": ["stdio", "sse"],
+        "description": "REQUIRED. The type of the server. If 'stdio', then 'command' and 'args' are required. If 'sse', then 'url' is required. Other properties become relevant based on this type."
+      },
+      "command": {
+        "type": "string",
+        "description": "The command to execute. This property is ONLY applicable and REQUIRED if 'type' is 'stdio'. Do not include for 'sse' type."
+      },
+      "args": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Arguments for the command. This property is ONLY applicable and REQUIRED if 'type' is 'stdio'. Values can reference shared inputs using \${input:<id>}. Do not include for 'sse' type."
+      },
+      "env": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Environment variables for the command. This property is ONLY applicable if 'type' is 'stdio'. It is optional for 'stdio' type servers. Values can reference shared inputs using \${input:<id>}. Do not include for 'sse' type."
+      },
+      "url": {
+        "type": "string",
+        "format": "uri",
+        "description": "The URL for the Server-Sent Events (SSE) endpoint. This property is ONLY applicable and REQUIRED if 'type' is 'sse'. Do not include for 'stdio' type."
+      },
+      "headers": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Headers to include in the SSE request. This property is ONLY applicable if 'type' is 'sse'. It is optional for 'sse' type servers. Values can reference shared inputs using \${input:<id>}. Do not include for 'stdio' type."
+      },
+      "inputs": {
+        "type": "array",
+        "description": "Optional. Defines a list of input parameters that this server configuration requires, such as API keys or user-specific paths. These inputs can then be referenced elsewhere in the configuration (e.g., in 'env', 'args', or 'url' for dynamic parts) using the syntax \${input:<id_from_this_inputs_array>}. For example, if an input has id 'my-api-key', it can be referenced as '\${input:my-api-key}'.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "REQUIRED. A unique identifier for this input. This ID is used in the \${input:<id>} syntax to reference the value."
+            },
+            "type": {
+              "type": "const",
+              "value": "promptString",
+              "description": "REQUIRED. The type of input expected (e.g., 'promptString'). Tells UI to render appropriate input fields for the user to fill in information."
+            },
+            "description": {
+              "type": "string",
+              "description": "Optional. A human-readable description of what this input is for, often used as a label in UIs."
+            },
+            "password": {
+              "type": "boolean",
+              "description": "Optional. If true, indicates that the input is sensitive (e.g., a password or API key) and its value should be obscured in UIs. Defaults to false if not provided."
+            }
+          },
+          "required": ["id", "type"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "name",
+      "type"
+    ],
+    "additionalProperties": false
+  }
+}
+
+
+
+  `);
 async function vscodeLMResponse(readme: string, webviewView?: vscode.WebviewView, repoFullName?: string) {
   return await vscode.window.withProgress(
     {
@@ -314,7 +415,7 @@ async function vscodeLMResponse(readme: string, webviewView?: vscode.WebviewView
         }
 
         const request = await model.sendRequest(
-          [craftedPrompt, vscode.LanguageModelChatMessage.User(readme)],
+          [craftedPrompt, responseFormatPrompt, vscode.LanguageModelChatMessage.User(readme)],
           //   { tools: toolsArray },
           {},
           new vscode.CancellationTokenSource().token
@@ -374,7 +475,7 @@ async function parseChatResponse(
         const parsedResponse = JSON.parse(accumulatedResponse);
         return parsedResponse;
       } catch (e) {
-        console.log("Error parsing response", e);
+        
         // do nothing
       }
     }
@@ -395,8 +496,12 @@ async function sendServers(webviewView: vscode.WebviewView) {
   await deleteServer(webviewView, "mcp-server-time");
   const config = vscode.workspace.getConfiguration("mcp");
   const servers = config.get("servers", {} as Record<string, any>);
-  if (servers["mcp-server-time"]) {
-    delete servers["mcp-server-time"];
+  try {
+    if (servers["mcp-server-time"]) {
+      delete servers["mcp-server-time"];
+    }
+  } catch (error) {
+    
   }
   webviewView.webview.postMessage({
     type: "receivedMCPConfigObject",
@@ -415,8 +520,12 @@ async function deleteServer(
     // Create a new object without the server to delete
     const updatedServers = { ...servers };
     delete updatedServers[serverKeyToDelete];
-    if (updatedServers["mcp-server-time"]) {
-      delete updatedServers["mcp-server-time"];
+    try {
+      if (updatedServers["mcp-server-time"]) {
+        delete updatedServers["mcp-server-time"];
+      }
+    } catch (error) {
+      
     }
 
     try {
@@ -436,11 +545,6 @@ async function deleteServer(
         );
       }
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(
-        `Error deleting server '${serverKeyToDelete}': ${errorMessage}`
-      );
       // Send back the original servers list on error
       webviewView.webview.postMessage({
         type: "receivedMCPConfigObject",

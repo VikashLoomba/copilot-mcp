@@ -35,8 +35,8 @@ export async function searchMcpServers(
   params: SearchMcpServersParams
 ): Promise<SearchMcpServersResponse | undefined> {
   try {
-    const baseQuery = `mcp in:name,description (npx OR uvx) in:readme archived:false language:TypeScript language:Python language:JavaScript`;
-    const fullQuery = params.userQuery ? `${baseQuery} ${params.userQuery}` : baseQuery;
+    const baseQuery = `"mcp" in:name,description,topics "${params.userQuery}" in:name,description`;
+    const fullQuery = params.userQuery ? baseQuery : baseQuery;
 
     const response = await octokit.search.repos({
       q: fullQuery,
