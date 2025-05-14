@@ -3,6 +3,9 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { searchMcpServers } from "../utilities/repoSearch";
 import { type TelemetryReporter } from "@vscode/extension-telemetry";
+import { CopilotChatProvider } from "../utilities/CopilotChat";
+import { dspyExamples } from "../utilities/const";
+import { AxGen } from "@ax-llm/ax";
 
 export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "copilotMcpView";
@@ -59,6 +62,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
             });
             return;
           }
+
           try {
             const result = await vscodeLMResponse(readmeToParse, webviewView, message.payload.repo?.fullName);
             console.log("Result: ", result);
@@ -87,22 +91,14 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "requestReadme": {
-          const { fullName, url: repoUrl } = message.payload; // repoUrl is kept for now, though not used for owner/repo extraction
-          if (!fullName) {
-            vscode.window.showErrorMessage("Repository fullName not provided for README request.");
-            return;
-          }
+          const { fullName, owner, name } = message.payload; // repoUrl is kept for now, though not used for owner/repo extraction
           try {
             const octokit = await this.getOctokit();
-            // Extract owner and repo from fullName (e.g., "owner/repo")
-            const parts = fullName.split('/');
-            if (parts.length !== 2) {
-              throw new Error(`Invalid repository fullName format: ${fullName}. Expected 'owner/repo'.`);
-            }
-            const owner = parts[0];
-            const repo = parts[1];
-
-            const readmeData = await octokit.repos.getReadme({ owner, repo });
+            console.log('got teh repo backend: ', message.payload);
+            console.log("LOGIN: ", owner.login);
+            console.log("NAME: ", message.payload.name);
+            // { owner: owner.login, name: message.payload.name }
+            const readmeData = await octokit.request(`GET /repos/${owner.login}/${name}/readme`);
             const readmeContent = Buffer.from(readmeData.data.content, 'base64').toString('utf8');
             
             webviewView.webview.postMessage({
@@ -194,7 +190,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
   }
 
   async getOctokit() {
-    const Octokit = await import("@octokit/rest");
+    const Octokit = await import("octokit");
     this.octokit = new Octokit.Octokit({
       auth: this._accessToken,
     });
@@ -252,147 +248,6 @@ function openMcpInstallUri(mcpConfig: object) {
   return vscode.commands.executeCommand("vscode.open", uri);
 }
 
-const craftedPrompt = vscode.LanguageModelChatMessage.User(`
-You are a helpful assistant that can expertly parse a README.md file and extract the MCP JSON object for a given open source 
-MCP server. You will be given the contents of a README.md file and you will need to parse the JSON configuration to provide
-that will be used to construct a vscode URI.
-The vscode URI mcp server object is in the same format as you would provide to --add-mcp (i.e. code --add-mcp "{\"name\":\"my-server\",\"command\": \"uvx\",\"args\": [\"mcp-server-fetch\"]}"), 
-and will be used like so:
-// For Insiders, use vscode-insiders instead of code
-const link = \\\`vscode:mcp/install?\${encodeURIComponent(JSON.stringify(obj))}\\\`;
-
-Provide the JSON server configuration in the form {\"name\":\"server-name\",\"command\":...}
-The text below contains correct examples of VSCode mcp server configurations. Your response should
-only include the JSON server configuration, including any required \`inputs\` entries for
-environment variables that should be stored securely, like shown below.
-
-// Example .vscode/mcp.json
-{
-  // 💡 Inputs will be prompted on first server start,
-  //    then stored securely by VS Code.
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "perplexity-key",
-      "description": "Perplexity API Key",
-      "password": true
-    }
-  ],
-  "servers": {
-    // https://github.com/ppl-ai/modelcontextprotocol/
-    "Perplexity": {
-      "type": "stdio",
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "-e", "PERPLEXITY_API_KEY", "mcp/perplexity-ask"],
-      "env": {
-        "PERPLEXITY_API_KEY": "\${input:perplexity-key}\"
-      }
-    },
-    // https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
-    "fetch": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["mcp-server-fetch"]
-    },
-    "my-remote-server": {
-      "type": "sse",
-      "url": "http://api.contoso.com/sse",
-      "headers": { "VERSION": "1.2" }
-    }
-  }
-}
-
-`);
-const responseFormatPrompt = vscode.LanguageModelChatMessage.User(`
-  The response MUST be in the form of a JSON object conforming to the following JSON schema.
-  JSON Schema:
-  {
-  "name": "server_configuration",
-  "schema": {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Unified Server Configuration",
-    "description": "Defines a single server configuration. The 'type' and 'name' properties are mandatory. The 'type' property dictates which other fields are relevant and potentially required. The LLM must carefully read the descriptions of each property to determine the correct structure based on the chosen 'type'. Any user-specific configurable values (like API keys or user-specific/user-configurable values) should be declared in the 'inputs' array and referenced elsewhere using the \${input:<id_from_inputs_array>} syntax.",
-    "type": "object",
-    "properties": {
-      "name": {
-        "type": "string",
-        "description": "REQUIRED. A user-friendly and unique name for this server configuration."
-      },
-      "type": {
-        "type": "string",
-        "enum": ["stdio", "sse"],
-        "description": "REQUIRED. The type of the server. If 'stdio', then 'command' and 'args' are required. If 'sse', then 'url' is required. Other properties become relevant based on this type."
-      },
-      "command": {
-        "type": "string",
-        "description": "The command to execute. This property is ONLY applicable and REQUIRED if 'type' is 'stdio'. Do not include for 'sse' type."
-      },
-      "args": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        },
-        "description": "Arguments for the command. This property is ONLY applicable and REQUIRED if 'type' is 'stdio'. Values can reference shared inputs using \${input:<id>}. Do not include for 'sse' type."
-      },
-      "env": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        },
-        "description": "Environment variables for the command. This property is ONLY applicable if 'type' is 'stdio'. It is optional for 'stdio' type servers. Values can reference shared inputs using \${input:<id>}. Do not include for 'sse' type."
-      },
-      "url": {
-        "type": "string",
-        "format": "uri",
-        "description": "The URL for the Server-Sent Events (SSE) endpoint. This property is ONLY applicable and REQUIRED if 'type' is 'sse'. Do not include for 'stdio' type."
-      },
-      "headers": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        },
-        "description": "Headers to include in the SSE request. This property is ONLY applicable if 'type' is 'sse'. It is optional for 'sse' type servers. Values can reference shared inputs using \${input:<id>}. Do not include for 'stdio' type."
-      },
-      "inputs": {
-        "type": "array",
-        "description": "Optional. Defines a list of input parameters that this server configuration requires, such as API keys or user-specific paths. These inputs can then be referenced elsewhere in the configuration (e.g., in 'env', 'args', or 'url' for dynamic parts) using the syntax \${input:<id_from_this_inputs_array>}. For example, if an input has id 'my-api-key', it can be referenced as '\${input:my-api-key}'.",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string",
-              "description": "REQUIRED. A unique identifier for this input. This ID is used in the \${input:<id>} syntax to reference the value."
-            },
-            "type": {
-              "type": "const",
-              "value": "promptString",
-              "description": "REQUIRED. The type of input expected (e.g., 'promptString'). Tells UI to render appropriate input fields for the user to fill in information."
-            },
-            "description": {
-              "type": "string",
-              "description": "Optional. A human-readable description of what this input is for, often used as a label in UIs."
-            },
-            "password": {
-              "type": "boolean",
-              "description": "Optional. If true, indicates that the input is sensitive (e.g., a password or API key) and its value should be obscured in UIs. Defaults to false if not provided."
-            }
-          },
-          "required": ["id", "type"],
-          "additionalProperties": false
-        }
-      }
-    },
-    "required": [
-      "name",
-      "type"
-    ],
-    "additionalProperties": false
-  }
-}
-
-
-
-  `);
 async function vscodeLMResponse(readme: string, webviewView?: vscode.WebviewView, repoFullName?: string) {
   return await vscode.window.withProgress(
     {
@@ -404,41 +259,108 @@ async function vscodeLMResponse(readme: string, webviewView?: vscode.WebviewView
         progress.report({
           message: `Adding server to config...`,
         });
-        const models = await vscode.lm.selectChatModels();
-        console.log("models", models);
-        const model = models.find(
-          (m) =>
-            m.vendor === "copilot" && (m.id === "gpt-4.1" || m.id === "gpt-4o")
+        const copilot = CopilotChatProvider.getInstance();
+        const provider = copilot.provider;
+        provider.setOptions({ debug: false });
+        const prompt = new AxGen<{ readme: string }, { command: string, name:  string, args: string[], env: JSON, inputs: {id: string, type: "promptString", description: "string",  password: boolean}[] }>(
+            `"Extract MCP server details from the readme. User-configurable args and env values extracted from the README.md should use the \${input:<input-id>} syntax." readme:string "MCP server readme with instructions" -> command:string "the command used to start the MCP server", args:string[] "arguments to pass in to the command", name:string "The name of the MCP server", inputs:json[] "All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources", env:json "Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths."`
         );
-        if (!model) {
-          throw new Error("No model found");
-        }
+        prompt.setExamples(dspyExamples);
 
-        const request = await model.sendRequest(
-          [craftedPrompt, responseFormatPrompt, vscode.LanguageModelChatMessage.User(readme)],
-          //   { tools: toolsArray },
-          {},
-          new vscode.CancellationTokenSource().token
-        );
-        const parsedResponse = await parseChatResponse(request);
+        const object = await prompt.forward(provider, {readme}, {stream: false});
+        console.dir(object, {depth: null, colors:true});
+
+//             system: `You are a helpful assistant that can expertly parse a README.md file and extract the MCP JSON object for a given open source 
+// MCP server. The following examples contain successful extraction responses.
+// <example-responses>
+//     <example>
+//     {
+//         "servers": {
+//             "name": "perplexity",
+//             "type": "stdio",
+//             "command": "docker",
+//             "args": ["run", "-i", "--rm", "-e", "PERPLEXITY_API_KEY", "mcp/perplexity-ask"],
+//             "env": {
+//                 "PERPLEXITY_API_KEY": \${input:perplexity-key}
+//             }
+//         },
+//         "inputs": [
+//             {
+//                 "type": "promptString",
+//                 "id": "perplexity-key",
+//                 "description": "Perplexity API Key",
+//                 "password": true
+//             }
+//         ],
+//     }
+//     </example>
+//     <example>
+//     {
+//         "servers": {
+//             "name": "fetch",
+//             "type": "stdio",
+//             "command": "uvx",
+//             "args": ["mcp-server-fetch"]
+//         }
+//     }
+//     </example>
+//     <example>
+//     {
+//         "servers": {
+//             "name": "my-remote-server",
+//             "type": "sse",
+//             "url": "http://api.contoso.com/sse",
+//             "headers": { 
+//                 "VERSION": "1.2",
+//                 "Authorization": \${input:contoso_api_key} 
+//             }
+//         },
+//         "inputs": [
+//             {
+//                 "type": "promptString",
+//                 "id": "contoso_api_key",
+//                 "description": "Contoso API Key",
+//                 "password": true
+//             }
+//         ],
+//     }
+//     </example>
+//     <example>
+//     {
+//         "servers": {
+//             "name": "filesystem-server",
+//             "type": "stdio",
+//             "args": ["--path-to-root-folder", "\${input:fs-root}"],
+//         },
+//         "inputs": [
+//             {
+//                 "type": "promptString",
+//                 "id": "fs-root",
+//                 "description": "Path to the folder you want to expose to the server",
+//                 "password": "false"
+//             }
+//         ]
+//     }
+//     </example>
+// </example-responses>
+// `,
+//             schemaDescription: `Unified Server Configuration`,
+//             schemaName: 'server_configuration',
+//             model: provider('claude-3.5-sonnet'),
+//             prompt: mcpConfigPrompt(readme),
+//             schema: copilot.getJson()
+//         });
+//         console.dir(object.object, {depth: null, colors: true});
+        // const parsedResponse = await parseChatResponse(request);
         progress.report({
           message: `Configuring server...`,
         });
-        const cmdResponse = await openMcpInstallUri(parsedResponse);
+        const cmdResponse = await openMcpInstallUri(object);
         progress.report({
           message: `Added MCP Server`,
         });
-        // Optionally, notify webview upon successful addition if webviewView is provided
-        if (webviewView && repoFullName) {
-          webviewView.webview.postMessage({
-            type: "serverInstallSuccess", // Or a more generic success message
-            payload: { 
-              fullName: repoFullName,
-              serverConfig: parsedResponse 
-            }
-          });
-        }
-        return parsedResponse;
+        return object;
+        // return object.object;
       } catch (err) {
         // Making the chat request might fail because
         // - model does not exist

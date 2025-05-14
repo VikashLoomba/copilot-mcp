@@ -33,20 +33,20 @@ export interface SearchMcpServersResponse {
 export async function searchMcpServers(
   octokit: any,
   params: SearchMcpServersParams
-): Promise<SearchMcpServersResponse | undefined> {
+): Promise<any | undefined> {
   try {
     const baseQuery = `"mcp" in:name,description,topics "${params.userQuery}" in:name,description`;
     const fullQuery = params.userQuery ? baseQuery : baseQuery;
 
-    const response = await octokit.search.repos({
+    const response = await octokit.rest.search.repos({
       q: fullQuery,
       page: params.page,
       per_page: params.perPage,
       // sort: 'stars', // Optional: sort by stars or relevance
       order: 'desc',
     });
-
-    console.log(`Found ${response.data.total_count} repositories for query "${fullQuery}", page ${params.page}:`);
+    console.dir(response, {depth: null, colors:true})
+    console.log(`Found ${response} repositories for query "${fullQuery}", page ${params.page}:`);
 
     const processedResults: McpServerResult[] = [];
     console.log(response.data.items[0]);
@@ -70,6 +70,7 @@ export async function searchMcpServers(
         description: repo.description,
         language: repo.language,
         updatedAt: repo.updated_at,
+        ...repo
       });
     }
 

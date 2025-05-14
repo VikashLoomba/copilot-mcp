@@ -15,30 +15,8 @@ import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 
-// Define an interface for the McpServerAuthor, mirroring the one in SearchMCPServers.tsx
-interface McpServerAuthor {
-  name: string;
-  profileUrl: string;
-  avatarUrl: string;
-}
-
-// Define an interface for the SearchResult, mirroring the one in SearchMCPServers.tsx
-// Ideally, this would be in a shared types file
-interface SearchResult {
-  id: number;
-  url: string;
-  name: string;
-  fullName: string;
-  stars: number;
-  author: McpServerAuthor;
-  description: string | null;
-  readme: string; // This will now be populated by a message
-  language: string | null;
-  updatedAt: string;
-}
-
 interface RepoCardProps {
-  repo: SearchResult;
+  repo: any;
 }
 
 const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
@@ -51,12 +29,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
     // Request README content when the component mounts or repo changes
     vscodeApi.postMessage({
       type: "requestReadme",
-      payload: {
-        fullName: repo.fullName, // Still useful for matching responses
-        ownerLogin: repo.author.name, // Send owner.login (assuming author.name is owner.login)
-        repoName: repo.name,         // Send repo.name
-        url: repo.url, // url of the repo, kept for potential future use or context
-      },
+      payload: repo,
     });
 
     const handleMessage = (event: MessageEvent) => {
@@ -85,6 +58,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo.id, repo.fullName, repo.author.name, repo.name, repo.url, vscodeApi]);
 
   // Helper function to format date (can be expanded)

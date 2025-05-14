@@ -131,7 +131,7 @@ const SearchMCPServers: React.FC = () => {
             {!isLoading && !error && results.length > 0 && (
                 <>
                     <div className="grid grid-cols-1 gap-4">
-                        {results.map((repo) => (
+                        {(results as any).map((repo: any) => (
                             <RepoCard key={repo.id} repo={repo} />
                         ))}
                     </div>
