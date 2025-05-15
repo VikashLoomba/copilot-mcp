@@ -133,8 +133,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
           const page = message.page || 1;
           const perPage = message.perPage || 10;
           const searchResponse = await searchMcpServers(
-            await this.getOctokit(),
-            { userQuery: message.query, page, perPage }
+            { query: message.query, page, perPage }
           );
 
           const results = searchResponse?.results || [];

@@ -26,7 +26,8 @@
     "Programming Languages",
     "Education",
     "Snippets",
-    "Testing"
+    "Testing",
+    "Machine Learning"
   ],
   "keywords": [
     "chat-participant",
@@ -42,7 +43,8 @@
     "chatgpt",
     "sonnet",
     "ai",
-    "llama"
+    "llama",
+    "model context protocol"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -52,6 +54,59 @@
     "github.copilot-chat"
   ],
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "copilot.mcp-agent",
+        "name": "mcp",
+        "fullName": "MCP Finder",
+        "description": "Find and install MCP servers for VSCode",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "search",
+            "description": "Search for MCP servers to install",
+            "disambiguation": [
+              {
+                "category": "mcp_search",
+                "description": "The user wants to search for Model Context Protocol (MCP) servers",
+                "examples": [
+                  "What mcp servers are there for figma?",
+                  "Can you find a browser mcp server to use?",
+                  "Can find an mcp server for X?"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "install",
+            "description": "Install an MCP server",
+            "disambiguation": [
+              {
+                "category": "mcp_install",
+                "description": "The user wants to install a Model Context Protocol (MCP) server to VSCode.",
+                "examples": [
+                  "Can you install the firecrawl mcp server for me?",
+                  "Add the github mcp server to vscode"
+                ]
+              }
+            ]
+          }
+        ],
+        "disambiguation": [
+          {
+            "category": "mcp_search",
+            "description": "The user is asking about finding Model Context Protocol (MCP) servers",
+            "examples": [
+              "Can you help me find mcp servers for interacting with my local database?",
+              "Can you help me install the mcp memory server?",
+              "How do I install the firecrawl MCP server?",
+              "Can you help me add the figma MCP server?",
+              "What mcp servers are there for task management?"
+            ]
+          }
+        ]
+      }
+    ],
     "commands": [
       {
         "command": "copilot-mcp.helloWorld",
@@ -116,6 +171,7 @@
     "@ax-llm/ax": "^11.0.41",
     "@ax-llm/ax-ai-sdk-provider": "^11.0.41",
     "@octokit/rest": "^21.1.1",
+    "@vscode/chat-extension-utils": "^0.0.0-alpha.5",
     "@vscode/extension-telemetry": "^1.0.0",
     "ai": "^4.3.15",
     "octokit": "^4.1.3",

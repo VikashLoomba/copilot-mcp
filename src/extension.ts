@@ -3,6 +3,7 @@ import { TelemetryReporter } from "@vscode/extension-telemetry";
 import { CopilotMcpViewProvider } from "./panels/ExtensionPanel";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
+import { handler } from "./McpAgent";
 const connectionString =
   "InstrumentationKey=2c71cf43-4cb2-4e25-97c9-bd72614a9fe8;IngestionEndpoint=https://westus2-2.in.applicationinsights.azure.com/;LiveEndpoint=https://westus2.livediagnostics.monitor.azure.com/;ApplicationId=862c3c9c-392a-4a12-8475-5c9ebeff7aaf";
 
@@ -55,6 +56,12 @@ export async function activate(context: vscode.ExtensionContext) {
       provider
     )
   );
+
+  // Register the chat participant and its request handler
+  const mcpChatAgent = vscode.chat.createChatParticipant('copilot.mcp-agent', handler);
+
+  // Optionally, set some properties for @cat
+  mcpChatAgent.iconPath = vscode.Uri.joinPath(context.extensionUri, 'logo.png');
 
   // Show "What's New" page if the extension has been updated
   // await showUpdatesToUser(context);

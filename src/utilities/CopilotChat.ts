@@ -26,7 +26,7 @@ export class CopilotChatProvider {
   private _baseModel = ""; // Will be set dynamically from available models
   public modelDetails: any = null;
   private _modelCapabilities: any = null; // Store model capabilities
-  private _provider!: AxAIOpenAIBase<"gpt-4.1", "text-embedding-ada-002">;
+  private _provider!: AxAIOpenAIBase<"gpt-4o", "text-embedding-ada-002">;
 
   private _initialized = false;
 
@@ -36,10 +36,10 @@ export class CopilotChatProvider {
         apiKey: this.copilotToken!,
         apiURL: this.baseUrl,
         config: {
-            model: 'gpt-4.1',
+            model: 'gpt-4o',
             embedModel: "text-embedding-ada-002"
         },
-        modelInfo: [{name: "gpt-4.1"}]
+        modelInfo: [{name: "gpt-4o"}]
       });
       this.provider.setHeaders(() => Promise.resolve(this.headers));
     }
