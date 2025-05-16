@@ -7,11 +7,11 @@
 
 </div>
 <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0;">
-  <img width="1200" alt="image" src="https://github.com/user-attachments/assets/d92d1ff2-998d-43ad-a386-071af84dbab6" />
+  <img width="800" alt="image" src="./demo.gif" />
 </div>
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.0.39-blue.svg?cacheSeconds=2592000)
+![Version](https://img.shields.io/badge/version-0.0.44-blue.svg?cacheSeconds=2592000)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![VSCode Extension](https://img.shields.io/badge/VSCode-Extension-blue.svg?logo=visual-studio-code)](https://code.visualstudio.com/api/references/extension-guidelines)
 [![MCP Client](https://img.shields.io/badge/MCP-Client-green.svg)](https://modelcontextprotocol.io/clients)
