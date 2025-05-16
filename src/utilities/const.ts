@@ -1,15 +1,15 @@
 export const GITHUB_AUTH_PROVIDER_ID = "github";
 export const SCOPES = [
-  "user:email",
-  "read:org",
-  "read:user",
-  "repo",
-  "workflow",
+	"user:email",
+	"read:org",
+	"read:user",
+	"repo",
+	"workflow",
 ];
 
 export const dspyExamples = [
-  {
-    readme: `
+	{
+		readme: `
                 # 21st.dev Magic AI Agent
                 Magic Component Platform (MCP) is a powerful AI-driven tool that helps developers create beautiful, modern UI components instantly through natural language descriptions. It integrates seamlessly with popular IDEs and provides a streamlined workflow for UI development.
                 ## 🚀 Getting Started
@@ -68,23 +68,23 @@ export const dspyExamples = [
                 }
                 \`\`\`
                 `,
-    name: "@21st-dev/magic",
-    command: "npx",
-    args: ["-y", "@21st-dev/magic@latest"],
-    env: {
-      API_KEY: "${input:apiKey}",
-    },
-    inputs: [
-      {
-        type: "promptString",
-        id: "apiKey",
-        description: "21st.dev Magic API Key",
-        password: true,
-      },
-    ],
-  },
-  {
-    readme: `
+		name: "@21st-dev/magic",
+		command: "npx",
+		args: ["-y", "@21st-dev/magic@latest"],
+		env: {
+			API_KEY: "${input:apiKey}",
+		},
+		inputs: [
+			{
+				type: "promptString",
+				id: "apiKey",
+				description: "21st.dev Magic API Key",
+				password: true,
+			},
+		],
+	},
+	{
+		readme: `
                     # GitMCP
                     ## 🤔 What is GitMCP?
                     **Stop vibe-hallucinating and start vibe-coding!**
@@ -151,26 +151,26 @@ export const dspyExamples = [
 
                     GitMCP connects your AI assistant to GitHub repositories using the Model Context Protocol (MCP), a standard that lets AI tools request additional information from external sources.
                     `,
-    name: "gitmcp",
-    command: "npx",
-    args: ["mcp-remote", "https://gitmcp.io/${input:owner}/${input:repo}"],
-    inputs: [
-      {
-        type: "promptString",
-        id: "owner",
-        description: "Repository Owner",
-        password: false,
-      },
-      {
-        type: "promptString",
-        id: "repo",
-        description: "Repository name.",
-        password: false,
-      },
-    ],
-  },
-  {
-    readme: `
+		name: "gitmcp",
+		command: "npx",
+		args: ["mcp-remote", "https://gitmcp.io/${input:owner}/${input:repo}"],
+		inputs: [
+			{
+				type: "promptString",
+				id: "owner",
+				description: "Repository Owner",
+				password: false,
+			},
+			{
+				type: "promptString",
+				id: "repo",
+				description: "Repository name.",
+				password: false,
+			},
+		],
+	},
+	{
+		readme: `
                     # mcp-server-qdrant: A Qdrant MCP server
                     > The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) is an open protocol that enables
                     > seamless integration between LLM applications and external data sources and tools. Whether you're building an
@@ -562,33 +562,33 @@ export const dspyExamples = [
 
                     ## Contributing
                     `,
-    name: "qdrant",
+		name: "qdrant",
 
-    command: "uvx",
-    args: ["mcp-server-qdrant"],
-    env: {
-      QDRANT_URL: "${input:qdrantUrl}",
-      QDRANT_API_KEY: "${input:qdrantApiKey}",
-      COLLECTION_NAME: "${input:collectionName}",
-    },
+		command: "uvx",
+		args: ["mcp-server-qdrant"],
+		env: {
+			QDRANT_URL: "${input:qdrantUrl}",
+			QDRANT_API_KEY: "${input:qdrantApiKey}",
+			COLLECTION_NAME: "${input:collectionName}",
+		},
 
-    inputs: [
-      {
-        type: "promptString",
-        id: "qdrantUrl",
-        description: "Qdrant URL",
-      },
-      {
-        type: "promptString",
-        id: "qdrantApiKey",
-        description: "Qdrant API Key",
-        password: true,
-      },
-      {
-        type: "promptString",
-        id: "collectionName",
-        description: "Collection Name",
-      },
-    ],
-  },
+		inputs: [
+			{
+				type: "promptString",
+				id: "qdrantUrl",
+				description: "Qdrant URL",
+			},
+			{
+				type: "promptString",
+				id: "qdrantApiKey",
+				description: "Qdrant API Key",
+				password: true,
+			},
+			{
+				type: "promptString",
+				id: "collectionName",
+				description: "Collection Name",
+			},
+		],
+	},
 ];
