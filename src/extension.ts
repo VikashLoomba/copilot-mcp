@@ -32,6 +32,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	const copilot = await CopilotChatProvider.initialize(context);
 	const models = await copilot.getModels();
 	setCommonLogAttributes({ ...session.account });
+	if (vscode.env.isNewAppInstall) {
+		getLogger().logUsage("newUserInstall");
+	}
 	getLogger().logUsage("activate");
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated

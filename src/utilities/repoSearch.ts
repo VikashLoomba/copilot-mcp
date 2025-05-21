@@ -46,7 +46,7 @@ export async function searchMcpServers(
 			auth: session?.accessToken,
 		});
 		const baseQuery = `"mcp" in:name,description,topics "${params.query}" in:name,description`;
-		const fullQuery = params.query ? params.query : baseQuery;
+		const fullQuery = params.query?.includes("mcp") ? params.query : baseQuery;
 
 		const response = await octokit.rest.search.repos({
 			q: fullQuery,

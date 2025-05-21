@@ -270,7 +270,7 @@ export async function readmeExtractionRequest(readme: string) {
 			}[];
 		}
 	>(
-		`"Extract MCP server details from the readme. User-configurable args and env values extracted from the README.md should use the \${input:<input-id>} syntax." readme:string "MCP server readme with instructions" -> command:string "the command used to start the MCP server", args:string[] "arguments to pass in to the command", name:string "The name of the MCP server", inputs:json[] "All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources", env:json "Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths."`
+		`"Extract MCP server details from the readme. User-configurable args and env values extracted from the README.md should use the \${input:<input-id>} syntax." readme:string "MCP server readme with instructions" -> command:string "the command used to start the MCP server. Prefer 'npx', 'docker', and 'uvx' commands.", args:string[] "arguments to pass in to the command", name:string "The name of the MCP server", inputs:json[] "All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources", env:json "Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths."`
 	);
 	prompt.setExamples(dspyExamples);
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Info, Terminal, Trash2Icon } from "lucide-react";
@@ -20,6 +20,8 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Messenger } from "vscode-messenger-webview";
+import { deleteServerType, getMcpConfigType, updateMcpConfigType, updateServerEnvVarType } from "../../../src/shared/types/rpcTypes";
 
 // Define the structure of a server object based on the example provided
 interface McpServer {
@@ -38,48 +40,29 @@ interface McpServer {
 // }
 
 const InstalledMCPServers: React.FC = () => {
+  const vscodeApi = useVscodeApi();
+  const messenger = useMemo(() => new Messenger(vscodeApi), [vscodeApi]);
   const [servers, setServers] = useState<Record<string, McpServer>>({});
   // const [isEditing] = useState(false);
   // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activeServerName, setActiveServerName] = useState<string | null>(null);
   const [serverToDelete, setServerToDelete] = useState<McpServer | null>(null);
-  const vscodeApi = useVscodeApi();
+  
 
   useEffect(() => {
-    // Ensure vscodeApi is available before trying to use it or set up listeners
-    if (!vscodeApi) {
-      // If API is not yet available (e.g. provider hasn't initialized, or in non-webview context where mock failed)
-      // you might want to return or show a specific state. The hook should throw if it truly can't get an API.
-      console.warn("VSCode API not available from context yet.");
-      return;
+    messenger.start();
+    async function getMcpConfig() {
+      const result: any = await messenger.sendRequest(getMcpConfigType, {
+        type: 'extension'
+      });
+      setServers(result.servers);
     }
+    getMcpConfig();
 
-    // Request initial data
-    vscodeApi.postMessage({ type: "requestMCPConfigObject" });
-
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data; // The data VS Code sent
-      switch (message.type) {
-        case "receivedMCPConfigObject":
-          if (message.data && message.data.servers) {
-            setServers(message.data.servers);
-          }
-          break;
-        case "error": // Handle potential errors from the backend
-          console.error("Error from extension:", message.data?.message);
-          // Optionally, display an error message to the user in the UI
-          break;
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    // Cleanup listener on component unmount
-    return () => {
-      window.removeEventListener("message", handleMessage);
-    };
-    // Re-run effect if vscodeApi instance changes (though it shouldn't after initial load)
-  }, [vscodeApi]);
+    messenger.onNotification(updateMcpConfigType, (payload) => {
+      setServers((payload.servers as any));
+    });
+  }, [messenger]);
 
   const handleEnvVarChange = (serverName: string, envKey: string, newValue: string) => {
     setServers(prevServers => {
@@ -94,14 +77,13 @@ const InstalledMCPServers: React.FC = () => {
         [serverName]: updatedServer,
       };
     });
-    if (vscodeApi) {
-      vscodeApi.postMessage({
-        type: "updateServerEnvVar", // Ensure your extension handles this message type
-        payload: {
-          serverName,
-          envKey,
-          newValue,
-        },
+    if (messenger) {
+      messenger.sendNotification(updateServerEnvVarType, {
+        type: 'extension',
+      }, {
+        serverName,
+        envKey,
+        newValue
       });
     } else {
       console.error("VSCode API not available to update env var.");
@@ -109,14 +91,8 @@ const InstalledMCPServers: React.FC = () => {
   };
 
   const handleDeleteServer = (serverKey: string) => {
-    if (vscodeApi) {
-      vscodeApi.postMessage({
-        type: "deleteServer",
-        key: serverKey,
-      });
-    } else {
-      // This case should ideally not be reached if the hook and provider are working correctly
-      console.error("VSCode API not available from context to delete server.");
+    if(messenger) {
+        messenger.sendNotification(deleteServerType, {type: 'extension'}, {serverName: serverKey})
     }
   };
 

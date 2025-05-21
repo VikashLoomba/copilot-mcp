@@ -1,13 +1,23 @@
 import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { searchMcpServers } from "../utilities/repoSearch";
+import { getReadme, searchMcpServers } from "../utilities/repoSearch";
 import { type TelemetryReporter } from "@vscode/extension-telemetry";
 import { CopilotChatProvider } from "../utilities/CopilotChat";
 import { dspyExamples } from "../utilities/const";
 import { AxGen } from "@ax-llm/ax";
 import { openMcpInstallUri, readmeExtractionRequest } from "../McpAgent";
 import { getLogger } from "../telemetry";
+import { Messenger } from "vscode-messenger";
+import {
+	aiAssistedSetupType,
+	deleteServerType,
+	getMcpConfigType,
+	getReadmeType,
+	searchServersType,
+	updateMcpConfigType,
+	updateServerEnvVarType,
+} from "../shared/types/rpcTypes";
 
 export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "copilotMcpView";
@@ -25,12 +35,123 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken
 	) {
-		if (vscode.env.isNewAppInstall) {
-			getLogger().logUsage("newUserInstall", {
+		const messenger = new Messenger();
+		messenger.registerWebviewView(webviewView);
+
+		messenger.onRequest(searchServersType, async (payload) => {
+			const page = payload.page || 1;
+			const perPage = payload.perPage || 10;
+			const searchResponse = await searchMcpServers({
+				query: payload.query,
+				page,
+				perPage,
+			});
+			const results = searchResponse?.results || [];
+			const totalCount = searchResponse?.totalCount || 0;
+			getLogger().logUsage("searchMcpServers", {
+				query: payload.query,
 				accountId: this._session.account.id,
 				accountLabel: this._session.account.label,
 			});
-		}
+			return { results, totalCount, currentPage: page, perPage };
+		});
+
+		messenger.onRequest(getReadmeType, async (payload) => {
+			console.log("getReadmeType", payload);
+			const { fullName, owner, name } = payload;
+			try {
+				const readmeContent = await getReadme({
+					repoOwner: owner.login,
+					repoName: name,
+				});
+				console.log("readmeContent", readmeContent);
+				return { readme: readmeContent, fullName };
+			} catch (e) {
+				console.error("Error getting readme", e);
+				return { readme: "", fullName };
+			}
+		});
+
+		messenger.onRequest(getMcpConfigType, async (payload) => {
+			const servers = await sendServers(webviewView);
+			return { servers };
+		});
+
+		messenger.onRequest(aiAssistedSetupType, async (payload) => {
+			getLogger().logUsage("attemptMcpServerInstall", {
+				repoId: payload.repo?.id,
+				repoName: payload.repo?.name,
+				repoUrl: payload.repo?.url.split("//")[1],
+			});
+			// Expecting payload.repo and payload.readme
+			const readmeToParse = payload.repo.readme;
+			if (!readmeToParse) {
+				vscode.window.showErrorMessage(
+					"README content is missing in aiAssistedSetup message."
+				);
+				return false;
+			}
+
+			try {
+				const result = await this.vscodeLMResponse(
+					readmeToParse,
+					webviewView,
+					payload.repo?.fullName
+				);
+				if (result) {
+					getLogger().logUsage("aiAssistedSetupSuccess", {
+						repoId: payload.repo?.id,
+						repoName: payload.repo?.name,
+						repoUrl: payload.repo?.url.split("//")[1],
+					});
+					return true;
+				} else {
+					getLogger().logUsage("aiAssistedSetupError", {
+						repoId: payload.repo?.id,
+						repoName: payload.repo?.name,
+						repoUrl: payload.repo?.url.split("//")[1],
+					});
+					return false;
+				}
+			} catch (error) {
+				console.error("Error during AI Assisted Setup: ", error);
+				getLogger().logError("aiAssistedSetupError", {
+					repoId: payload.repo?.id,
+					repoName: payload.repo?.name,
+					repoUrl: payload.repo?.url.split("//")[1],
+				});
+				// Notify webview about the error
+				return false;
+			}
+		});
+
+		messenger.onNotification(updateServerEnvVarType, async (payload) => {
+			try {
+				console.log("updateServer message: ", payload);
+				const configKey = `mcp.servers.${payload.serverName}.env`;
+				const config = vscode.workspace.getConfiguration(configKey);
+				await config.update(payload.envKey, payload.newValue, vscode.ConfigurationTarget.Global);
+			} catch (error) {
+				console.error("Error updating server env var: ", error);
+			}
+		});
+
+		messenger.onNotification(deleteServerType, async (payload) => {
+			try {
+				console.log("deleteServer message: ", payload);
+				await deleteServer(webviewView, payload.serverName);
+				messenger.sendNotification(
+					updateMcpConfigType,
+					{ type: "webview", webviewType: webviewView.viewType },
+					{
+						servers: localGetServers(),
+					}
+				);
+			} catch (error) {
+				console.error("Error deleting server: ", error);
+			}
+		});
+
 		webviewView.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [this._extensionUri],
@@ -40,7 +161,13 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 		vscode.workspace.onDidChangeConfiguration(async (e) => {
 			if (e.affectsConfiguration("mcp.servers")) {
-				await sendServers(webviewView);
+				messenger.sendNotification(
+					updateMcpConfigType,
+					{ type: "webview", webviewType: webviewView.viewType },
+					{
+						servers: localGetServers(),
+					}
+				);
 			}
 		});
 		// if(vscode.)
@@ -53,169 +180,27 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		// Handle messages from the webview
 		webviewView.webview.onDidReceiveMessage(async (message) => {
 			switch (message.type) {
-				case "getNewMcpServers": {
-				}
-				case "aiAssistedSetup": {
-					getLogger().logUsage("attemptMcpServerInstall", {
-						accountId: this._session.account.id,
-						accountLabel: this._session.account.label,
-						repoId: message.payload.repo?.id,
-						repoName: message.payload.repo?.name,
-						repoUrl: message.payload.repo?.url.split("//")[1],
-					});
-					// Expecting payload.repo and payload.readme
-					const readmeToParse = message.payload.repo.readme;
-					if (!readmeToParse) {
-						vscode.window.showErrorMessage(
-							"README content is missing in aiAssistedSetup message."
-						);
-						webviewView.webview.postMessage({
-							type: "finishInstall", // Notify webview to stop loading
-							payload: {
-								fullName: message.payload.repo?.fullName,
-							},
-						});
-						return;
-					}
+				// case "deleteServer": {
+				// 	const serverKeyToDelete = message.key;
+				// 	if (!serverKeyToDelete) {
+				// 		vscode.window.showErrorMessage(
+				// 			"Server key to delete is missing."
+				// 		);
+				// 		// Optionally, inform the webview about the error
+				// 		webviewView.webview.postMessage({
+				// 			type: "error",
+				// 			data: {
+				// 				message: "Server key to delete is missing.",
+				// 			},
+				// 		});
+				// 		return;
+				// 	}
 
-					try {
-						const result = await this.vscodeLMResponse(
-							readmeToParse,
-							webviewView,
-							message.payload.repo?.fullName
-						);
-						console.log("Result: ", result);
-						// Potentially send a success message or the result back to the webview
-					} catch (error) {
-						console.error(
-							"Error during AI Assisted Setup: ",
-							error
-						);
-						// Notify webview about the error
-					} finally {
-						webviewView.webview.postMessage({
-							type: "finishInstall",
-							payload: {
-								fullName: message.payload.repo?.fullName,
-							}, // Send fullName for identification
-						});
-					}
-					break;
-				}
-				case "updateServerEnvVar": {
-					try {
-						console.log("updateServer message: ", message);
-						const configKey = `mcp.servers.${message.payload.serverName}.env`;
-						const config =
-							vscode.workspace.getConfiguration(configKey);
-						await config.update(
-							message.payload.envKey,
-							message.payload.newValue
-						);
-					} catch (error) {}
-					//   await sendServers(webviewView);
-					break;
-				}
-				case "requestReadme": {
-					const { fullName, owner, name } = message.payload; // repoUrl is kept for now, though not used for owner/repo extraction
-					try {
-						const octokit = await this.getOctokit();
-						console.log("got teh repo backend: ", message.payload);
-						console.log("LOGIN: ", owner.login);
-						console.log("NAME: ", message.payload.name);
-						// { owner: owner.login, name: message.payload.name }
-						const readmeData = await octokit.request(
-							`GET /repos/${owner.login}/${name}/readme`
-						);
-						const readmeContent = Buffer.from(
-							readmeData.data.content,
-							"base64"
-						).toString("utf8");
-
-						webviewView.webview.postMessage({
-							type: "receivedReadme",
-							payload: {
-								fullName: fullName, // Send back the fullName for matching
-								readme: readmeContent,
-							},
-						});
-					} catch (error) {
-						console.error(
-							`Failed to fetch README for ${fullName}:`,
-							error
-						);
-						webviewView.webview.postMessage({
-							type: "receivedReadme",
-							payload: {
-								fullName: fullName,
-								readme: null, // Indicate failure
-								error:
-									error instanceof Error
-										? error.message
-										: "Unknown error fetching README",
-							},
-						});
-					}
-					break;
-				}
-				case "search": {
-					console.log("search", message.query);
-					getLogger().logUsage("searchMcpServers", {
-						query: message.query,
-						accountId: this._session.account.id,
-						accountLabel: this._session.account.label,
-					});
-					const page = message.page || 1;
-					const perPage = message.perPage || 10;
-					const searchResponse = await searchMcpServers({
-						query: message.query,
-						page,
-						perPage,
-					});
-
-					const results = searchResponse?.results || [];
-					const totalCount = searchResponse?.totalCount || 0;
-
-					webviewView.webview.postMessage({
-						type: "receivedSearchResults",
-						data: {
-							results: results,
-							totalCount: totalCount,
-							currentPage: page,
-							perPage: perPage,
-						},
-					});
-					break;
-				}
-				case "requestMCPConfigObject": {
-					const commands = (
-						await vscode.commands.getCommands()
-					).filter((c) => c.includes("mcp"));
-					console.log("commands", commands);
-					await sendServers(webviewView);
-					break;
-				}
-				case "deleteServer": {
-					const serverKeyToDelete = message.key;
-					if (!serverKeyToDelete) {
-						vscode.window.showErrorMessage(
-							"Server key to delete is missing."
-						);
-						// Optionally, inform the webview about the error
-						webviewView.webview.postMessage({
-							type: "error",
-							data: {
-								message: "Server key to delete is missing.",
-							},
-						});
-						return;
-					}
-
-					try {
-						await deleteServer(webviewView, serverKeyToDelete);
-					} catch (error) {}
-					break;
-				}
+				// 	try {
+				// 		await deleteServer(webviewView, serverKeyToDelete);
+				// 	} catch (error) {}
+				// 	break;
+				// }
 				// It's good practice to have a default case, even if just for logging
 				default:
 					console.warn(
@@ -375,6 +360,13 @@ async function sendServers(webviewView: vscode.WebviewView) {
 		type: "receivedMCPConfigObject",
 		data: { servers },
 	});
+	return servers;
+}
+
+function localGetServers() {
+	const config = vscode.workspace.getConfiguration("mcp");
+	const servers = config.get("servers", {} as Record<string, any>);
+	return servers;
 }
 
 async function deleteServer(
@@ -400,22 +392,12 @@ async function deleteServer(
 				updatedServers,
 				vscode.ConfigurationTarget.Global
 			);
-			// Send the updated list back to the webview
-			webviewView.webview.postMessage({
-				type: "receivedMCPConfigObject",
-				data: { servers: updatedServers },
-			});
+
 			if (serverKeyToDelete !== "mcp-server-time") {
 				vscode.window.showInformationMessage(
 					`Server '${serverKeyToDelete}' deleted.`
 				);
 			}
-		} catch (error: unknown) {
-			// Send back the original servers list on error
-			webviewView.webview.postMessage({
-				type: "receivedMCPConfigObject",
-				data: { servers },
-			});
-		}
+		} catch (error: unknown) {}
 	}
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -14,52 +14,73 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
-
+import { Messenger } from "vscode-messenger-webview";
+import { aiAssistedSetupType, getReadmeType } from "../../../src/shared/types/rpcTypes";
 interface RepoCardProps {
   repo: any;
 }
 
 const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
+  const vscodeApi = useVscodeApi();
+  const messenger = useMemo(() => new Messenger(vscodeApi), [vscodeApi]);
   const [isLoading, setIsLoading] = useState(false);
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [shouldShowInstallButton, setShouldShowInstallButton] = useState(false);
-  const vscodeApi = useVscodeApi();
+  const [installError, setInstallError] = useState(false);
 
   useEffect(() => {
-    // Request README content when the component mounts or repo changes
-    vscodeApi.postMessage({
-      type: "requestReadme",
-      payload: repo,
-    });
-
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      console.log("Received message:", message);
-      if (message.type === "receivedReadme" && message.payload.fullName === repo.fullName) {
-        const currentReadmeContent: string = message.payload.readme;
-        setReadmeContent(currentReadmeContent);
-        if (currentReadmeContent) {
-          const readmeLines = currentReadmeContent.replace(/\n/g, "");
-          const showButton =
-            readmeLines.includes(`"command": "uvx"`) ||
-            readmeLines.includes(`"command": "npx"`) ||
-            readmeLines.includes(`"command": "pypi"`) ||
-            readmeLines.includes(`"command": "docker"`);
-          setShouldShowInstallButton(showButton);
-        } else {
-          setShouldShowInstallButton(false);
-        }
-      } else if (message.type === "finishInstall" && message.payload.fullName === repo.fullName) {
-        setIsLoading(false);
+    messenger.start();
+    async function getReadme() {
+      const result= await messenger.sendRequest(getReadmeType, {
+        type: 'extension'
+      },{
+        name: repo.name,
+        fullName: repo.fullName,
+        owner: repo.owner
+      });
+      if (result.readme && result.fullName === repo.fullName) {
+        setReadmeContent(result.readme);
+        const readmeLines = result.readme.replace(/\n/g, "");
+        const showButton =
+          readmeLines.includes(`"command": "uvx"`) ||
+          readmeLines.includes(`"command": "npx"`) ||
+          readmeLines.includes(`"command": "pypi"`) ||
+          readmeLines.includes(`"command": "docker"`);
+        setShouldShowInstallButton(showButton);
+      } else {
+        setShouldShowInstallButton(false);
       }
-    };
+    }
+    getReadme();
 
-    window.addEventListener("message", handleMessage);
-    return () => {
-      window.removeEventListener("message", handleMessage);
-    };
+    
+    //   const message = event.data;
+    //   console.log("Received message:", message);
+    //   if (message.type === "receivedReadme" && message.payload.fullName === repo.fullName) {
+    //     const currentReadmeContent: string = message.payload.readme;
+    //     setReadmeContent(currentReadmeContent);
+    //     if (currentReadmeContent) {
+    //       const readmeLines = currentReadmeContent.replace(/\n/g, "");
+    //       const showButton =
+    //         readmeLines.includes(`"command": "uvx"`) ||
+    //         readmeLines.includes(`"command": "npx"`) ||
+    //         readmeLines.includes(`"command": "pypi"`) ||
+    //         readmeLines.includes(`"command": "docker"`);
+    //       setShouldShowInstallButton(showButton);
+    //     } else {
+    //       setShouldShowInstallButton(false);
+    //     }
+    //   } else if (message.type === "finishInstall" && message.payload.fullName === repo.fullName) {
+    //     setIsLoading(false);
+    //   }
+    // };
+
+    // window.addEventListener("message", handleMessage);
+    // return () => {
+    //   window.removeEventListener("message", handleMessage);
+    // };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo.id, repo.fullName, repo.author.name, repo.name, repo.url, vscodeApi]);
+  }, [messenger]);
 
   // Helper function to format date (can be expanded)
   const formatDate = (dateString: string) => {
@@ -82,12 +103,18 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
       return;
     }
     // Listener for "finish" is now part of the main message handler
-    vscodeApi.postMessage({
-      type: "aiAssistedSetup",
-      payload: {
-        repo: { ...repo, readme: readmeContent }, // Send the full repo object with the fetched readme
-      }
+    const result = await messenger.sendRequest(aiAssistedSetupType, {
+      type: 'extension'
+    }, {
+      repo: { ...repo, readme: readmeContent }
     });
+    if (result) {
+      setIsLoading(false);
+      setInstallError(false);
+    } else {
+      setIsLoading(false);
+      setInstallError(true);
+    }
     // setIsLoading(false) will be handled by 'finishInstall' message
   };
 
@@ -160,6 +187,18 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
           >
             Install
+          </Button>
+        </CardFooter>
+      )}
+      {/* Red button to indicate install error with "Retry Install" text */}
+      {installError && (
+        <CardFooter className="pt-2 pb-3 border-t">
+          <Button
+            variant={"destructive"}
+            onClick={handleInstallClick}
+            className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+          >
+            Retry Install
           </Button>
         </CardFooter>
       )}
