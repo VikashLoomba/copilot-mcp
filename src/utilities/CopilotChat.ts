@@ -87,10 +87,6 @@ export class CopilotChatProvider {
 
 	// Renamed to _initialize to avoid confusion with the static method
 	private async _initialize(context: vscode.ExtensionContext): Promise<void> {
-		if (this._initialized) {
-			console.log("CopilotChatProvider already initialized");
-			return;
-		}
 		this._context = context;
 		this.registerListeners(context);
 
@@ -112,19 +108,7 @@ export class CopilotChatProvider {
 				return;
 			}
 		}
-
-		if (this.session) {
-			try {
-				// Get Copilot token using the GitHub auth token
-				await this.getCopilotToken(context);
-			} catch (error) {
-				console.error("Failed to get Copilot token:", error);
-				vscode.window.showErrorMessage(
-					"GitHub Copilot authentication failed. Ensure you have an active Copilot subscription."
-				);
-				return;
-			}
-		}
+		await this.getCopilotToken(context);
 
 		const existingSessions = await vscode.authentication.getAccounts(
 			GITHUB_AUTH_PROVIDER_ID
@@ -134,6 +118,7 @@ export class CopilotChatProvider {
 		// Set initialized flag to true
 		this._initialized = true;
 		console.log("CopilotChatProvider initialization complete");
+		vscode.window.showInformationMessage("Copilot MCP initialized");
 	}
 
 	private async getCopilotToken(
@@ -292,18 +277,18 @@ export class CopilotChatProvider {
 					);
 
 					// Ensure consistent headers
-					this._headers = {
-						"content-type": "application/json",
-						accept: "application/json",
-						authorization: `Bearer ${this.copilotToken}`,
-						"copilot-integration-id": "vscode-chat",
-						"editor-version": `vscode/${vscode.version}`,
-						"editor-plugin-version": "copilot-chat/0.24.1",
-						"openai-intent": "conversation-panel",
-						"x-github-api-version": "2024-12-15",
-						"x-request-id": globalThis.crypto.randomUUID(),
-						"x-vscode-user-agent-library-version": "electron-fetch",
-					};
+					// this._headers = {
+					// 	"content-type": "application/json",
+					// 	accept: "application/json",
+					// 	authorization: `Bearer ${this.copilotToken}`,
+					// 	"copilot-integration-id": "vscode-chat",
+					// 	"editor-version": `vscode/${vscode.version}`,
+					// 	"editor-plugin-version": "copilot-chat/0.24.1",
+					// 	"openai-intent": "conversation-panel",
+					// 	"x-github-api-version": "2024-12-15",
+					// 	"x-request-id": globalThis.crypto.randomUUID(),
+					// 	"x-vscode-user-agent-library-version": "electron-fetch",
+					// };
 				} else if (tokenData.error === "authorization_pending") {
 					// User hasn't completed authentication yet, continue polling
 					continue;

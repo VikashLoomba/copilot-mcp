@@ -79,7 +79,7 @@ export const handler: vscode.ChatRequestHandler = async (
 	const logger = getLogger();
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
-	provider.setOptions({ debug: true });
+	provider.setOptions({ debug: false });
 	const Octokit = await import("@octokit/rest");
 
 	const session = await vscode.authentication.getSession(
@@ -228,7 +228,7 @@ class GitHubSearchTool
 	) {
 		const copilot = CopilotChatProvider.getInstance();
 		const provider = copilot.provider;
-		provider.setOptions({ debug: true });
+		provider.setOptions({ debug: false });
 		const githubAgent = new AxAgent<
 			{ query: string },
 			{ relevantRepositoryResults: JSON }
