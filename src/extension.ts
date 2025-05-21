@@ -14,7 +14,7 @@ const telemetryReporter = new TelemetryReporter(connectionString);
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
-	getLogger().logUsage("activate");
+	
 	const Octokit = await import("@octokit/rest");
 	context.subscriptions.push(logger, { dispose: shutdownLogs });
 	context.subscriptions.push(telemetryReporter);
@@ -32,7 +32,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const copilot = await CopilotChatProvider.initialize(context);
 	const models = await copilot.getModels();
 	setCommonLogAttributes({ ...session.account });
-
+	getLogger().logUsage("activate");
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "copilot-mcp" is now active!');
