@@ -15,6 +15,7 @@ import {
 	getMcpConfigType,
 	getReadmeType,
 	searchServersType,
+	sendFeedbackType,
 	updateMcpConfigType,
 	updateServerEnvVarType,
 } from "../shared/types/rpcTypes";
@@ -152,6 +153,15 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			}
 		});
 
+		messenger.onNotification(sendFeedbackType, async (payload) => {
+			getLogger().logUsage("sendFeedback", {
+				feedback: payload.feedback,
+			});
+			vscode.window.showInformationMessage(
+				`Feedback submitted. Thank you!`
+			);
+		});
+
 		webviewView.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [this._extensionUri],
@@ -210,6 +220,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					break;
 			}
 		}, undefined);
+		webviewView.show(false);
 	}
 
 	async getOctokit() {

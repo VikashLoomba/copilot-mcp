@@ -20,8 +20,9 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Messenger } from "vscode-messenger-webview";
-import { deleteServerType, getMcpConfigType, updateMcpConfigType, updateServerEnvVarType } from "../../../src/shared/types/rpcTypes";
+import { deleteServerType, getMcpConfigType, sendFeedbackType, updateMcpConfigType, updateServerEnvVarType } from "../../../src/shared/types/rpcTypes";
 
 // Define the structure of a server object based on the example provided
 interface McpServer {
@@ -47,6 +48,7 @@ const InstalledMCPServers: React.FC = () => {
   // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activeServerName, setActiveServerName] = useState<string | null>(null);
   const [serverToDelete, setServerToDelete] = useState<McpServer | null>(null);
+  const [feedbackText, setFeedbackText] = useState<string>("");
   
 
   useEffect(() => {
@@ -93,6 +95,12 @@ const InstalledMCPServers: React.FC = () => {
   const handleDeleteServer = (serverKey: string) => {
     if(messenger) {
         messenger.sendNotification(deleteServerType, {type: 'extension'}, {serverName: serverKey})
+    }
+  };
+
+  const handleSendFeedback = (feedback: string) => {
+    if(messenger) {
+      messenger.sendNotification(sendFeedbackType, {type: 'extension'}, {feedback})
     }
   };
 
@@ -149,134 +157,170 @@ const InstalledMCPServers: React.FC = () => {
   );
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
-      {Object.entries(servers).map(([name, server], index) => (
-        <React.Fragment key={`${name}-${index}`}>
-          <Card
-            className={cn(
-              "w-full h-auto overflow-hidden group transition-all duration-500",
-              "bg-[var(--vscode-editor-background)] border-[var(--vscode-editorWidget-border)]",
-              "hover:shadow-sm hover:border-[var(--vscode-focusBorder)]/50"
-            )}
-          >
-            <CardHeader className="p-3">
-              <Collapsible open={activeServerName === name}>
-                <CollapsibleTrigger asChild>
-                  <div
-                    className={cn(
-                      "cursor-pointer w-full transition-all duration-500",
-                      activeServerName !== name &&
-                        "hover:bg-[var(--vscode-list-hoverBackground)]/50 rounded p-1"
-                    )}
-                    onClick={() =>
-                      setActiveServerName((prev) =>
-                        prev === name ? null : name
-                      )
-                    }
-                  >
-                    {renderCardHeader(name, server)}
-                  </div>
-                </CollapsibleTrigger>
-
-                <CollapsibleContent>
-                {server.env && Object.keys(server.env).length > 0 && (
-                    <div className="mt-2">
-                      <h4 className="text-xs font-medium text-[var(--vscode-foreground)] mb-1.5 px-1">
-                        Environment Variables
-                      </h4>
-                      <div className="space-y-1.5 px-1">
-                        {Object.entries(server.env).map(([key, value]) => (
-                          <div key={key} className="flex items-center gap-2">
-                            <Label
-                              htmlFor={`${name}-${key}-env`}
-                              className="text-xs text-[var(--vscode-descriptionForeground)] w-2/5 sm:w-1/3 flex-shrink-0 truncate"
-                              title={key}
-                            >
-                              {key}
-                            </Label>
-                            <Input
-                              id={`${name}-${key}-env`}
-                              type="text"
-                              value={value}
-                              onChange={(e) => handleEnvVarChange(name, key, e.target.value)}
-                              className="flex-grow h-7 text-xs bg-[var(--vscode-input-background)] text-[var(--vscode-input-foreground)] border-[var(--vscode-input-border)] focus-visible:ring-1 focus-visible:ring-[var(--vscode-focusBorder)] rounded-sm shadow-none px-2 py-1"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <Button
-                    variant={"link"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setServerToDelete({...server, name});
-                    }}
-                    className="text-[var(--vscode-errorForeground)] hover:text-[var(--vscode-errorForeground)]/80 p-1 mt-2 flex items-center gap-1"
-                  >
-                    <Trash2Icon size={16} /> Delete
-                  </Button>
-                </CollapsibleContent>
-              </Collapsible>
-            </CardHeader>
-          </Card>
-
-          {/* Delete confirmation dialog */}
-          <Dialog
-            open={!!serverToDelete}
-            onOpenChange={(isOpen) => {
-              if (!isOpen) setServerToDelete(null);
-            }}
-          >
-            <DialogContent className="max-w-[400px] bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] border-[var(--vscode-widget-border)]">
-              <DialogHeader>
-                <DialogTitle className="text-lg flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-[var(--vscode-errorForeground)]" />
-                  Remove Server
-                </DialogTitle>
-                <DialogDescription className="text-[var(--vscode-descriptionForeground)]">
-                  Are you sure you want to remove the server "
-                  {serverToDelete?.name}"?
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="bg-[var(--vscode-errorForeground)]/10 p-3 rounded flex items-start gap-2 my-2">
-                <Info className="h-4 w-4 text-[var(--vscode-errorForeground)] mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-[var(--vscode-errorForeground)]">
-                  This action cannot be undone. The server will be removed from
-                  your configuration.
-                </p>
-              </div>
-
-              <DialogFooter className="gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setServerToDelete(null)}
-                  className="bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    if (serverToDelete) {
-                      handleDeleteServer(serverToDelete.name);
-                      if (activeServerName === serverToDelete.name) {
-                        setActiveServerName(null);
+    <>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
+        {Object.entries(servers).map(([name, server], index) => (
+          <React.Fragment key={`${name}-${index}`}>
+            <Card
+              className={cn(
+                "w-full h-auto overflow-hidden group transition-all duration-500",
+                "bg-[var(--vscode-editor-background)] border-[var(--vscode-editorWidget-border)]",
+                "hover:shadow-sm hover:border-[var(--vscode-focusBorder)]/50"
+              )}
+            >
+              <CardHeader className="p-3">
+                <Collapsible open={activeServerName === name}>
+                  <CollapsibleTrigger asChild>
+                    <div
+                      className={cn(
+                        "cursor-pointer w-full transition-all duration-500",
+                        activeServerName !== name &&
+                          "hover:bg-[var(--vscode-list-hoverBackground)]/50 rounded p-1"
+                      )}
+                      onClick={() =>
+                        setActiveServerName((prev) =>
+                          prev === name ? null : name
+                        )
                       }
-                      setServerToDelete(null);
-                    }
-                  }}
-                  className="bg-[var(--vscode-errorForeground)] hover:bg-[var(--vscode-errorForeground)]/90 text-white"
-                >
-                  Remove Server
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </React.Fragment>
-      ))}
-    </div>
+                    >
+                      {renderCardHeader(name, server)}
+                    </div>
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                  {server.env && Object.keys(server.env).length > 0 && (
+                      <div className="mt-2">
+                        <h4 className="text-xs font-medium text-[var(--vscode-foreground)] mb-1.5 px-1">
+                          Environment Variables
+                        </h4>
+                        <div className="space-y-1.5 px-1">
+                          {Object.entries(server.env).map(([key, value]) => (
+                            <div key={key} className="flex items-center gap-2">
+                              <Label
+                                htmlFor={`${name}-${key}-env`}
+                                className="text-xs text-[var(--vscode-descriptionForeground)] w-2/5 sm:w-1/3 flex-shrink-0 truncate"
+                                title={key}
+                              >
+                                {key}
+                              </Label>
+                              <Input
+                                id={`${name}-${key}-env`}
+                                type="text"
+                                value={value}
+                                onChange={(e) => handleEnvVarChange(name, key, e.target.value)}
+                                className="flex-grow h-7 text-xs bg-[var(--vscode-input-background)] text-[var(--vscode-input-foreground)] border-[var(--vscode-input-border)] focus-visible:ring-1 focus-visible:ring-[var(--vscode-focusBorder)] rounded-sm shadow-none px-2 py-1"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <Button
+                      variant={"link"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setServerToDelete({...server, name});
+                      }}
+                      className="text-[var(--vscode-errorForeground)] hover:text-[var(--vscode-errorForeground)]/80 p-1 mt-2 flex items-center gap-1"
+                    >
+                      <Trash2Icon size={16} /> Delete
+                    </Button>
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardHeader>
+            </Card>
+
+            {/* Delete confirmation dialog */}
+            <Dialog
+              open={!!serverToDelete}
+              onOpenChange={(isOpen) => {
+                if (!isOpen) setServerToDelete(null);
+              }}
+            >
+              <DialogContent className="max-w-[400px] bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] border-[var(--vscode-widget-border)]">
+                <DialogHeader>
+                  <DialogTitle className="text-lg flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-[var(--vscode-errorForeground)]" />
+                    Remove Server
+                  </DialogTitle>
+                  <DialogDescription className="text-[var(--vscode-descriptionForeground)]">
+                    Are you sure you want to remove the server "
+                    {serverToDelete?.name}"?
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="bg-[var(--vscode-errorForeground)]/10 p-3 rounded flex items-start gap-2 my-2">
+                  <Info className="h-4 w-4 text-[var(--vscode-errorForeground)] mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-[var(--vscode-errorForeground)]">
+                    This action cannot be undone. The server will be removed from
+                    your configuration.
+                  </p>
+                </div>
+
+                <DialogFooter className="gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setServerToDelete(null)}
+                    className="bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (serverToDelete) {
+                        handleDeleteServer(serverToDelete.name);
+                        if (activeServerName === serverToDelete.name) {
+                          setActiveServerName(null);
+                        }
+                        setServerToDelete(null);
+                      }
+                    }}
+                    className="bg-[var(--vscode-errorForeground)] hover:bg-[var(--vscode-errorForeground)]/90 text-white"
+                  >
+                    Remove Server
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Feedback Section */}
+      <div className="mt-8 pt-6 border-t border-[var(--vscode-panel-border)]">
+        <h3 className="text-base font-medium mb-3 text-[var(--vscode-foreground)]">
+          Submit Feedback
+        </h3>
+        <div className="flex flex-col gap-3">
+          <Label
+            htmlFor="feedback-textarea"
+            className="text-sm text-[var(--vscode-descriptionForeground)]"
+          >
+            Help us improve! Share your thoughts or report issues:
+          </Label>
+          <Textarea
+            id="feedback-textarea"
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            placeholder="Enter your feedback here..."
+            className="min-h-[100px] bg-[var(--vscode-input-background)] text-[var(--vscode-input-foreground)] border-[var(--vscode-input-border)] focus-visible:ring-1 focus-visible:ring-[var(--vscode-focusBorder)] rounded-sm shadow-none px-3 py-2 text-sm"
+          />
+          <Button
+            onClick={() => {
+              if (feedbackText.trim()) {
+                handleSendFeedback(feedbackText.trim());
+                setFeedbackText("");
+              }
+            }}
+            className="w-fit bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] text-[var(--vscode-button-foreground)] px-4 py-2 text-sm h-auto"
+            disabled={!feedbackText.trim()}
+          >
+            Submit Feedback
+          </Button>
+        </div>
+      </div>
+    </>
   );
 };
 

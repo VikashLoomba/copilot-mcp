@@ -28,3 +28,5 @@ export const updateServerEnvVarType: NotificationType<
 export const deleteServerType: NotificationType<{ serverName: string }> = { method: "deleteServer" };
 
 export const aiAssistedSetupType: RequestType<{repo: any}, boolean> = { method: "aiAssistedSetup" };
+
+export const sendFeedbackType: NotificationType<{ feedback: string }> = { method: "sendFeedback" };
