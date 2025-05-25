@@ -2,6 +2,7 @@
 <h1>Copilot MCP Search for VSCode</h1> 
 </div>
 <div align="center">
+  <a href="vscode://AutomataLabs.copilot-mcp"><img src="https://badgen.net/vs-marketplace/i/AutomataLabs.copilot-mcp?icon=visualstudio" /></a>
 
 [![](https://dcbadge.limes.pink/api/server/https://discord.gg/copilotmcp)](https://discord.gg/copilotmcp)
 
