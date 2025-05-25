@@ -7,7 +7,7 @@
 
 </div>
 <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0;">
-  <img width="800" alt="image" src="./demo.gif" />
+  <img width="800" alt="image" src="https://automatalabs.io/demo.gif" />
 </div>
 <div align="center">
 
