@@ -17,7 +17,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	const Octokit = await import("@octokit/rest");
 	context.subscriptions.push(logger, { dispose: shutdownLogs });
 	context.subscriptions.push(telemetryReporter);
-	context.subscriptions.push(logger);
 	// console.dir(await vscode.authentication.getAccounts('github'), {depth: null});
 	const session = await vscode.authentication.getSession(
 		GITHUB_AUTH_PROVIDER_ID,
