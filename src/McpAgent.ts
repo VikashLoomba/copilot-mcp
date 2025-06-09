@@ -290,5 +290,4 @@ export async function openMcpInstallUri(mcpConfig: object) {
 	const uri = vscode.Uri.parse(uriString);
 	return await vscode.env.openExternal(uri);
 	// Open the URI using VS Code commands
-	return vscode.commands.executeCommand("vscode.open", uri);
 }
