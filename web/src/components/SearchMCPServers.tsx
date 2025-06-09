@@ -1,10 +1,11 @@
-import React, { useState, useEffect, type ChangeEvent } from 'react';
+import React, { useState, useEffect, type ChangeEvent, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useVscodeApi } from '@/contexts/VscodeApiContext';
+import { Messenger } from 'vscode-messenger-webview';
 import RepoCard from './RepoCard';
-
+import { searchServersType } from '../../../src/shared/types/rpcTypes';
 // Define an interface for the VSCode API
 interface McpServerAuthor {
     name: string;
@@ -30,6 +31,8 @@ const ITEMS_PER_PAGE = 10; // Define items per page
 
 const SearchMCPServers: React.FC = () => {
     const vscodeApi = useVscodeApi();
+    const messenger = useMemo(() => new Messenger(vscodeApi), [vscodeApi]);
+    
     const [searchTerm, setSearchTerm] = useState<string>('');
     const debouncedSearchTerm = useDebounce<string>(searchTerm, 500);
     const [results, setResults] = useState<SearchResult[]>([]);
@@ -63,16 +66,25 @@ const SearchMCPServers: React.FC = () => {
         };
     }, []);
 
-    const performSearch = (page: number, debouncedSearchTerm: string) => {
-        if (debouncedSearchTerm && vscodeApi) {
+    useEffect(() => {
+        messenger.start();
+    }, [messenger]);
+
+    const performSearch = async (page: number, debouncedSearchTerm: string) => {
+        if (debouncedSearchTerm && messenger) {
             setIsLoading(true);
             setError(null);
-            vscodeApi.postMessage({
-                type: 'search',
+            const result = await messenger.sendRequest(searchServersType, {
+                type: 'extension'
+            },{
                 query: debouncedSearchTerm,
                 page: page,
                 perPage: ITEMS_PER_PAGE,
             });
+            setResults(result.results || []);
+            setTotalResults(result.totalCount || 0);
+            setIsLoading(false);
+            setError(null);
         } else if (!debouncedSearchTerm) {
             setResults([]);
             setTotalResults(0);
@@ -131,7 +143,7 @@ const SearchMCPServers: React.FC = () => {
             {!isLoading && !error && results.length > 0 && (
                 <>
                     <div className="grid grid-cols-1 gap-4">
-                        {results.map((repo) => (
+                        {(results as any).map((repo: any) => (
                             <RepoCard key={repo.id} repo={repo} />
                         ))}
                     </div>

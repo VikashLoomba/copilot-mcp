@@ -24,29 +24,6 @@ const getVscodeApi = (): VscodeApi | null => {
   }
   // Fallback for when not in a VSCode webview context (e.g., browser development/testing)
   // You can expand this mock for better testing outside VSCode.
-  if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && !window.acquireVsCodeApi) {
-    console.warn('VSCode API (acquireVsCodeApi) not found. Using mock API for development.');
-    return {
-      postMessage: (message) => console.log('[Mock VSCode API] postMessage:', message),
-      getState: () => {
-        console.log('[Mock VSCode API] getState');
-        try {
-            const state = localStorage.getItem('vscodeState');
-            return state ? JSON.parse(state) : undefined;
-        } catch {
-            return undefined;
-        }
-      },
-      setState: (newState) => {
-        console.log('[Mock VSCode API] setState:', newState);
-        try {
-            localStorage.setItem('vscodeState', JSON.stringify(newState));
-        } catch {
-            // ignore
-        }
-      },
-    };
-  }
   return null;
 };
 
