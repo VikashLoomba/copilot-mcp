@@ -32,6 +32,7 @@ interface McpServer {
   args?: string[];
   env?: Record<string, string>;
   type?: string;
+  _source?: 'user' | 'workspace';
   // Add any other properties that might exist
 }
 
@@ -143,6 +144,19 @@ const InstalledMCPServers: React.FC = () => {
 
       {/* Right side with badges and switch */}
       <div className="flex items-center gap-2 flex-shrink-0">
+        {serverConfig._source && (
+          <Badge
+            variant={serverConfig._source === 'workspace' ? 'secondary' : 'outline'}
+            className={cn(
+              "text-xs py-0.5 px-2 h-6 min-w-16 flex items-center justify-center",
+              serverConfig._source === 'workspace' 
+                ? "bg-[var(--vscode-charts-blue)] text-white hover:bg-[var(--vscode-charts-blue)]" 
+                : "bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] hover:bg-[var(--vscode-badge-background)]"
+            )}
+          >
+            {serverConfig._source === 'workspace' ? 'Workspace' : 'User'}
+          </Badge>
+        )}
         <Badge
           variant={"default"}
           className={cn(
@@ -245,7 +259,7 @@ const InstalledMCPServers: React.FC = () => {
                   </DialogTitle>
                   <DialogDescription className="text-[var(--vscode-descriptionForeground)]">
                     Are you sure you want to remove the server "
-                    {serverToDelete?.name}"?
+                    {serverToDelete?.name}"? This will remove it from your {serverToDelete?._source || 'user'} settings.
                   </DialogDescription>
                 </DialogHeader>
 

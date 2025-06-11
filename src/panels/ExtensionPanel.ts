@@ -129,9 +129,40 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		messenger.onNotification(updateServerEnvVarType, async (payload) => {
 			try {
 				console.log("updateServer message: ", payload);
-				const configKey = `mcp.servers.${payload.serverName}.env`;
-				const config = vscode.workspace.getConfiguration(configKey);
-				await config.update(payload.envKey, payload.newValue, vscode.ConfigurationTarget.Global);
+				
+				// Determine which configuration scope contains this server
+				const userConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Global);
+				const workspaceConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Workspace);
+				
+				const userServers = userConfig.get("servers", {} as Record<string, any>);
+				const workspaceServers = workspaceConfig.get("servers", {} as Record<string, any>);
+				
+				let configToUpdate = null;
+				let serversToUpdate = null;
+				let targetScope = null;
+				
+				// Check workspace first (higher precedence)
+				if (workspaceServers[payload.serverName]) {
+					configToUpdate = workspaceConfig;
+					serversToUpdate = { ...workspaceServers };
+					targetScope = vscode.ConfigurationTarget.Workspace;
+				} else if (userServers[payload.serverName]) {
+					configToUpdate = userConfig;
+					serversToUpdate = { ...userServers };
+					targetScope = vscode.ConfigurationTarget.Global;
+				}
+				
+				if (configToUpdate && serversToUpdate && targetScope) {
+					// Update the environment variable for the specific server
+					if (serversToUpdate[payload.serverName]) {
+						if (!serversToUpdate[payload.serverName].env) {
+							serversToUpdate[payload.serverName].env = {};
+						}
+						serversToUpdate[payload.serverName].env[payload.envKey] = payload.newValue;
+						
+						await configToUpdate.update("servers", serversToUpdate, targetScope);
+					}
+				}
 			} catch (error) {
 				console.error("Error updating server env var: ", error);
 			}
@@ -360,13 +391,7 @@ async function parseChatResponse(
 
 async function sendServers(webviewView: vscode.WebviewView) {
 	await deleteServer(webviewView, "mcp-server-time");
-	const config = vscode.workspace.getConfiguration("mcp");
-	const servers = config.get("servers", {} as Record<string, any>);
-	try {
-		if (servers["mcp-server-time"]) {
-			delete servers["mcp-server-time"];
-		}
-	} catch (error) {}
+	const servers = localGetServers();
 	webviewView.webview.postMessage({
 		type: "receivedMCPConfigObject",
 		data: { servers },
@@ -375,8 +400,33 @@ async function sendServers(webviewView: vscode.WebviewView) {
 }
 
 function localGetServers() {
-	const config = vscode.workspace.getConfiguration("mcp");
-	const servers = config.get("servers", {} as Record<string, any>);
+	// Get user-level servers
+	const userConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Global);
+	const userServers = userConfig.get("servers", {} as Record<string, any>);
+	
+	// Get workspace-level servers  
+	const workspaceConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Workspace);
+	const workspaceServers = workspaceConfig.get("servers", {} as Record<string, any>);
+	
+	// Combine servers with source information
+	const servers: Record<string, any> = {};
+	
+	// Add user servers
+	Object.entries(userServers).forEach(([name, config]) => {
+		servers[name] = {
+			...config,
+			_source: 'user'
+		};
+	});
+	
+	// Add workspace servers (they take precedence and override user servers with same name)
+	Object.entries(workspaceServers).forEach(([name, config]) => {
+		servers[name] = {
+			...config,
+			_source: 'workspace'
+		};
+	});
+	
 	return servers;
 }
 
@@ -384,31 +434,51 @@ async function deleteServer(
 	webviewView: vscode.WebviewView,
 	serverKeyToDelete: string
 ) {
-	const config = vscode.workspace.getConfiguration("mcp");
-	let servers = config.get("servers", {} as Record<string, unknown>);
-
-	if (servers[serverKeyToDelete]) {
-		// Create a new object without the server to delete
-		const updatedServers = { ...servers };
-		delete updatedServers[serverKeyToDelete];
+	// First, determine which configuration scope contains this server
+	const userConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Global);
+	const workspaceConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Workspace);
+	
+	const userServers = userConfig.get("servers", {} as Record<string, unknown>);
+	const workspaceServers = workspaceConfig.get("servers", {} as Record<string, unknown>);
+	
+	let configToUpdate = null;
+	let serversToUpdate = null;
+	let targetScope = null;
+	
+	// Check workspace first (higher precedence)
+	if (workspaceServers[serverKeyToDelete]) {
+		configToUpdate = workspaceConfig;
+		serversToUpdate = { ...workspaceServers };
+		targetScope = vscode.ConfigurationTarget.Workspace;
+		delete serversToUpdate[serverKeyToDelete];
+	} else if (userServers[serverKeyToDelete]) {
+		configToUpdate = userConfig;
+		serversToUpdate = { ...userServers };
+		targetScope = vscode.ConfigurationTarget.Global;
+		delete serversToUpdate[serverKeyToDelete];
+	}
+	
+	if (configToUpdate && serversToUpdate && targetScope) {
 		try {
-			if (updatedServers["mcp-server-time"]) {
-				delete updatedServers["mcp-server-time"];
+			// Clean up mcp-server-time from both if it exists
+			if (serversToUpdate["mcp-server-time"]) {
+				delete serversToUpdate["mcp-server-time"];
 			}
-		} catch (error) {}
 
-		try {
-			await config.update(
+			await configToUpdate.update(
 				"servers",
-				updatedServers,
-				vscode.ConfigurationTarget.Global
+				serversToUpdate,
+				targetScope
 			);
 
 			if (serverKeyToDelete !== "mcp-server-time") {
+				const scopeName = targetScope === vscode.ConfigurationTarget.Workspace ? 'workspace' : 'user';
 				vscode.window.showInformationMessage(
-					`Server '${serverKeyToDelete}' deleted.`
+					`Server '${serverKeyToDelete}' deleted from ${scopeName} settings.`
 				);
 			}
-		} catch (error: unknown) {}
+		} catch (error: unknown) {
+			console.error("Error deleting server:", error);
+		}
 	}
 }
