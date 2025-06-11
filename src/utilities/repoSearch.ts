@@ -163,7 +163,19 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 			// throw new Error('No results found'); // Uncomment if you want this behavior
 			console.log("No results found for your query.");
 		}
-		return response;
+		return {
+			results: response.search.edges.map((edge: any) => {
+				const repo = edge.node;
+				return {
+					fullName: repo.nameWithOwner,
+					description: repo.description,
+					url: repo.url,
+					readme: repo.readme ? repo.readme.text : null, // Handle readme text
+				};
+			}),
+			totalCount: response.search.repositoryCount,
+			pageInfo: response.search.pageInfo,
+		};
 	} catch (error: any) {
 		console.error(
 			`Error searching repositories with user query "${payload.query}":`
