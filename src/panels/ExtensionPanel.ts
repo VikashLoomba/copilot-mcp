@@ -20,6 +20,51 @@ import {
 	updateServerEnvVarType,
 } from "../shared/types/rpcTypes";
 
+// Helper function to read servers from .vscode/mcp.json
+async function getServersFromMcpJsonFile(
+	folder: vscode.WorkspaceFolder
+): Promise<Record<string, any>> {
+	try {
+		const mcpJsonPath = vscode.Uri.joinPath(folder.uri, ".vscode", "mcp.json");
+		const fileContent = await vscode.workspace.fs.readFile(mcpJsonPath);
+		const parsedJson = JSON.parse(Buffer.from(fileContent).toString("utf8"));
+		return parsedJson.servers || {};
+	} catch (error) {
+		// Log error or handle if needed, e.g., file not found, invalid JSON
+		// console.warn(\`Error reading or parsing .vscode/mcp.json in \${folder.name}: \${error}\`);
+		return {};
+	}
+}
+
+// Consolidates servers from global settings, workspace settings, and .vscode/mcp.json files
+async function getAllServers(): Promise<Record<string, any>> {
+	const config = vscode.workspace.getConfiguration("mcp");
+
+	// 1. Get servers from global settings
+	const globalServers = config.inspect<Record<string, any>>("servers")?.globalValue || {};
+	
+	// 2. Get servers from workspace settings (.vscode/settings.json)
+	const workspaceSettingsServers = config.inspect<Record<string, any>>("servers")?.workspaceValue || {};
+
+	// 3. Get servers from .vscode/mcp.json files in all workspace folders
+	let mcpJsonFileServers: Record<string, any> = {};
+	if (vscode.workspace.workspaceFolders) {
+		for (const folder of vscode.workspace.workspaceFolders) {
+			const serversFromFile = await getServersFromMcpJsonFile(folder);
+			// Merge, allowing subsequent files to override previous ones if keys conflict
+			mcpJsonFileServers = { ...mcpJsonFileServers, ...serversFromFile };
+		}
+	}
+
+	// Merge order: global -> workspace settings -> .vscode/mcp.json files
+	let mergedServers = { ...globalServers };
+	mergedServers = { ...mergedServers, ...workspaceSettingsServers };
+	mergedServers = { ...mergedServers, ...mcpJsonFileServers };
+	
+	return mergedServers;
+}
+
+
 export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "copilotMcpView";
 	octokit: any;
@@ -74,7 +119,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		messenger.onRequest(getMcpConfigType, async (payload) => {
-			const servers = await sendServers(webviewView);
+			// Ensure "mcp-server-time" is handled correctly if it's a global temporary server
+			await deleteServer(webviewView, "mcp-server-time", true); // Pass a flag to suppress info for this specific server
+			const servers = await getAllServers();
 			return { servers };
 		});
 
@@ -128,59 +175,45 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 		messenger.onNotification(updateServerEnvVarType, async (payload) => {
 			try {
-				console.log("updateServer message: ", payload);
-				
-				// Determine which configuration scope contains this server
-				const userConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Global);
-				const workspaceConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Workspace);
-				
-				const userServers = userConfig.get("servers", {} as Record<string, any>);
-				const workspaceServers = workspaceConfig.get("servers", {} as Record<string, any>);
-				
-				let configToUpdate = null;
-				let serversToUpdate = null;
-				let targetScope = null;
-				
-				// Check workspace first (higher precedence)
-				if (workspaceServers[payload.serverName]) {
-					configToUpdate = workspaceConfig;
-					serversToUpdate = { ...workspaceServers };
-					targetScope = vscode.ConfigurationTarget.Workspace;
-				} else if (userServers[payload.serverName]) {
-					configToUpdate = userConfig;
-					serversToUpdate = { ...userServers };
-					targetScope = vscode.ConfigurationTarget.Global;
-				}
-				
-				if (configToUpdate && serversToUpdate && targetScope) {
-					// Update the environment variable for the specific server
-					if (serversToUpdate[payload.serverName]) {
-						if (!serversToUpdate[payload.serverName].env) {
-							serversToUpdate[payload.serverName].env = {};
-						}
-						serversToUpdate[payload.serverName].env[payload.envKey] = payload.newValue;
-						
-						await configToUpdate.update("servers", serversToUpdate, targetScope);
+				const { serverName, envKey, newValue } = payload;
+				const config = vscode.workspace.getConfiguration("mcp");
+				const globalServersInspect = config.inspect<Record<string, any>>("servers");
+				let globalServers = globalServersInspect?.globalValue || {};
+
+				if (globalServers[serverName]) {
+					const updatedGlobalServers = { ...globalServers };
+					if (!updatedGlobalServers[serverName].env) {
+						updatedGlobalServers[serverName].env = {};
 					}
+					updatedGlobalServers[serverName].env[envKey] = newValue;
+					await config.update("servers", updatedGlobalServers, vscode.ConfigurationTarget.Global);
+					// Optionally, inform webview to refresh if needed, or rely on onDidChangeConfiguration
+				} else {
+					vscode.window.showErrorMessage(
+						`Server '${serverName}' not found in global user settings. Cannot update environment variable.`
+					);
 				}
 			} catch (error) {
 				console.error("Error updating server env var: ", error);
+				vscode.window.showErrorMessage("Error updating server environment variable.");
 			}
 		});
 
 		messenger.onNotification(deleteServerType, async (payload) => {
 			try {
-				console.log("deleteServer message: ", payload);
 				await deleteServer(webviewView, payload.serverName);
+				// After deletion, tell the webview to re-fetch the config
+				const currentServers = await getAllServers();
 				messenger.sendNotification(
 					updateMcpConfigType,
 					{ type: "webview", webviewType: webviewView.viewType },
 					{
-						servers: localGetServers(),
+						servers: currentServers,
 					}
 				);
 			} catch (error) {
 				console.error("Error deleting server: ", error);
+				vscode.window.showErrorMessage("Error deleting server.");
 			}
 		});
 
@@ -202,11 +235,15 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 		vscode.workspace.onDidChangeConfiguration(async (e) => {
 			if (e.affectsConfiguration("mcp.servers")) {
+				// Also check if a .vscode/mcp.json might have changed. This is harder to detect directly.
+				// For simplicity, we re-fetch all if mcp.servers (from settings) changes.
+				// A more robust solution might involve file watchers for .vscode/mcp.json.
+				const currentServers = await getAllServers();
 				messenger.sendNotification(
 					updateMcpConfigType,
 					{ type: "webview", webviewType: webviewView.viewType },
 					{
-						servers: localGetServers(),
+						servers: currentServers,
 					}
 				);
 			}
@@ -389,96 +426,66 @@ async function parseChatResponse(
 	return accumulatedResponse;
 }
 
-async function sendServers(webviewView: vscode.WebviewView) {
-	await deleteServer(webviewView, "mcp-server-time");
-	const servers = localGetServers();
-	webviewView.webview.postMessage({
-		type: "receivedMCPConfigObject",
-		data: { servers },
-	});
-	return servers;
-}
+// This function is deprecated by direct use of getAllServers in the getMcpConfigType handler
+// and onDidChangeConfiguration. The webview will be updated with the full merged list.
+// async function sendServers(webviewView: vscode.WebviewView) {
+//   await deleteServer(webviewView, "mcp-server-time", true); // Suppress info for this specific server
+//   const allServers = await getAllServers();
+//   webviewView.webview.postMessage({
+//     type: "receivedMCPConfigObject",
+//     data: { servers: allServers },
+//   });
+//   return allServers;
+// }
 
-function localGetServers() {
-	// Get user-level servers
-	const userConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Global);
-	const userServers = userConfig.get("servers", {} as Record<string, any>);
-	
-	// Get workspace-level servers  
-	const workspaceConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Workspace);
-	const workspaceServers = workspaceConfig.get("servers", {} as Record<string, any>);
-	
-	// Combine servers with source information
-	const servers: Record<string, any> = {};
-	
-	// Add user servers
-	Object.entries(userServers).forEach(([name, config]) => {
-		servers[name] = {
-			...config,
-			_source: 'user'
-		};
-	});
-	
-	// Add workspace servers (they take precedence and override user servers with same name)
-	Object.entries(workspaceServers).forEach(([name, config]) => {
-		servers[name] = {
-			...config,
-			_source: 'workspace'
-		};
-	});
-	
-	return servers;
-}
+// This function is effectively replaced by getAllServers() for read operations.
+// function localGetServers() {
+//   return getAllServers();
+// }
 
 async function deleteServer(
-	webviewView: vscode.WebviewView,
-	serverKeyToDelete: string
+	webviewView: vscode.WebviewView, // webviewView might not be needed if not posting message from here
+	serverKeyToDelete: string,
+	suppressUserNotification: boolean = false
 ) {
-	// First, determine which configuration scope contains this server
-	const userConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Global);
-	const workspaceConfig = vscode.workspace.getConfiguration("mcp", vscode.ConfigurationTarget.Workspace);
-	
-	const userServers = userConfig.get("servers", {} as Record<string, unknown>);
-	const workspaceServers = workspaceConfig.get("servers", {} as Record<string, unknown>);
-	
-	let configToUpdate = null;
-	let serversToUpdate = null;
-	let targetScope = null;
-	
-	// Check workspace first (higher precedence)
-	if (workspaceServers[serverKeyToDelete]) {
-		configToUpdate = workspaceConfig;
-		serversToUpdate = { ...workspaceServers };
-		targetScope = vscode.ConfigurationTarget.Workspace;
-		delete serversToUpdate[serverKeyToDelete];
-	} else if (userServers[serverKeyToDelete]) {
-		configToUpdate = userConfig;
-		serversToUpdate = { ...userServers };
-		targetScope = vscode.ConfigurationTarget.Global;
-		delete serversToUpdate[serverKeyToDelete];
-	}
-	
-	if (configToUpdate && serversToUpdate && targetScope) {
+	const config = vscode.workspace.getConfiguration("mcp");
+	const globalServersInspect = config.inspect<Record<string, any>>("servers");
+	let globalServers = globalServersInspect?.globalValue || {};
+
+	if (globalServers[serverKeyToDelete]) {
+		const updatedGlobalServers = { ...globalServers }; // Create a new object
+		delete updatedGlobalServers[serverKeyToDelete];
+		
 		try {
-			// Clean up mcp-server-time from both if it exists
-			if (serversToUpdate["mcp-server-time"]) {
-				delete serversToUpdate["mcp-server-time"];
+			// Special handling for "mcp-server-time" if it's an internal mechanism
+			// This check was inside the original deleteServer, ensuring it's also removed if present.
+			if (updatedGlobalServers["mcp-server-time"]) {
+				delete updatedGlobalServers["mcp-server-time"];
 			}
 
-			await configToUpdate.update(
+			await config.update(
 				"servers",
-				serversToUpdate,
-				targetScope
+				updatedGlobalServers,
+				vscode.ConfigurationTarget.Global
 			);
 
-			if (serverKeyToDelete !== "mcp-server-time") {
-				const scopeName = targetScope === vscode.ConfigurationTarget.Workspace ? 'workspace' : 'user';
+			if (serverKeyToDelete !== "mcp-server-time" && !suppressUserNotification) {
 				vscode.window.showInformationMessage(
-					`Server '${serverKeyToDelete}' deleted from ${scopeName} settings.`
+					`Server '${serverKeyToDelete}' deleted from global settings.`
 				);
 			}
 		} catch (error: unknown) {
-			console.error("Error deleting server:", error);
+			if (!suppressUserNotification) {
+				vscode.window.showErrorMessage(`Error deleting server '${serverKeyToDelete}' from global settings.`);
+			}
+			console.error(`Error deleting server '${serverKeyToDelete}':`, error);
+		}
+	} else {
+		if (serverKeyToDelete !== "mcp-server-time" && !suppressUserNotification) {
+			// vscode.window.showInformationMessage( // Changed to warning or simply log, as it might exist in workspace
+			//   `Server '${serverKeyToDelete}' not found in global settings.`
+			// );
+			console.log(`Server '${serverKeyToDelete}' not found in global settings for deletion.`);
 		}
 	}
 }

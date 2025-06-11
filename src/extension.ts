@@ -79,8 +79,39 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Show "What's New" page if the extension has been updated
-	// await showUpdatesToUser(context);
+	await showUpdatesToUser(context);
+}
+
+// Helper that shows the WHATS_NEW.md preview when appropriate
+async function showUpdatesToUser(context: vscode.ExtensionContext) {
+	try {
+		// Locate this extension in VS Code's registry so we can read its package.json metadata
+		const thisExtension = vscode.extensions.all.find(
+			ext => ext.extensionUri.toString() === context.extensionUri.toString()
+		);
+		if (!thisExtension) {
+			return; // Should never happen, but guard just in case
+		}
+
+		const currentVersion: string = thisExtension.packageJSON.version;
+		const storageKey = "copilotMcp.whatsNewVersionShown";
+		const lastVersion: string | undefined = context.globalState.get(storageKey);
+
+		// Show the What's New page only for new installs or when the user upgrades to a version they haven't seen yet
+		if (lastVersion === currentVersion) {
+			return; // User has already been shown this version's notes
+		}
+
+		// Open the WHATS_NEW.md file bundled with the extension in the built-in Markdown preview
+		const whatsNewUri = vscode.Uri.joinPath(context.extensionUri, "WHATS_NEW.md");
+		await vscode.commands.executeCommand("markdown.showPreview", whatsNewUri);
+
+		// Persist that we've shown the notes for this version so we don't show again
+		await context.globalState.update(storageKey, currentVersion);
+	} catch (error) {
+		console.error("Failed to display What's New information:", error);
+	}
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }
