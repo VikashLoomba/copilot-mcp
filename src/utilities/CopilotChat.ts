@@ -1,9 +1,7 @@
 import * as vscode from "vscode";
 
-import { zodSchema } from "ai";
-
-import { z } from "zod";
-import { AxAIOpenAIBase } from "@ax-llm/ax";
+import { AxAIOpenAIBase,  } from "@ax-llm/ax";
+import { logError } from '../telemetry/standardizedTelemetry';
 
 const GITHUB_AUTH_PROVIDER_ID = "github";
 // The GitHub Authentication Provider accepts the scopes described here:
@@ -34,6 +32,11 @@ export class CopilotChatProvider {
 			this.provider = new AxAIOpenAIBase({
 				apiKey: this.copilotToken!,
 				apiURL: this.baseUrl,
+				supportFor: {
+					functions: true,
+					hasThinkingBudget: false,
+					streaming: false
+				},
 				config: {
 					model: "gpt-4.1",
 					embedModel: "text-embedding-ada-002",
@@ -50,14 +53,6 @@ export class CopilotChatProvider {
 
 	public get modelCapabilities() {
 		return this._modelCapabilities;
-	}
-
-	/**
-	 * Generate a random ID for messages
-	 * @returns Random string ID
-	 */
-	private generateId(): string {
-		return Math.random().toString(36).substring(2, 10);
 	}
 
 	// Private constructor to prevent direct instantiation
@@ -102,6 +97,14 @@ export class CopilotChatProvider {
 					"Failed to get GitHub authentication session:",
 					error
 				);
+				
+				// Log authentication failure with standardized telemetry
+				logError(error as Error, 'github-authentication', {
+					provider: GITHUB_AUTH_PROVIDER_ID,
+					scopes: SCOPES.join(','),
+					createIfNone: true,
+				});
+				
 				vscode.window.showErrorMessage(
 					"GitHub authentication failed. Please sign in to GitHub."
 				);
@@ -276,19 +279,6 @@ export class CopilotChatProvider {
 						"GitHub Copilot authentication successful!"
 					);
 
-					// Ensure consistent headers
-					// this._headers = {
-					// 	"content-type": "application/json",
-					// 	accept: "application/json",
-					// 	authorization: `Bearer ${this.copilotToken}`,
-					// 	"copilot-integration-id": "vscode-chat",
-					// 	"editor-version": `vscode/${vscode.version}`,
-					// 	"editor-plugin-version": "copilot-chat/0.24.1",
-					// 	"openai-intent": "conversation-panel",
-					// 	"x-github-api-version": "2024-12-15",
-					// 	"x-request-id": globalThis.crypto.randomUUID(),
-					// 	"x-vscode-user-agent-library-version": "electron-fetch",
-					// };
 				} else if (tokenData.error === "authorization_pending") {
 					// User hasn't completed authentication yet, continue polling
 					continue;
@@ -302,6 +292,13 @@ export class CopilotChatProvider {
 			}
 		} catch (error: any) {
 			console.error("Error getting Copilot token:", error);
+			
+			// Log token retrieval failure with standardized telemetry
+			logError(error, 'copilot-token-retrieval', {
+				clientId: GITHUB_COPILOT_CLIENT_ID,
+				context: 'token-exchange',
+			});
+			
 			throw new Error(
 				`Failed to authenticate with GitHub Copilot: ${error.message}`
 			);

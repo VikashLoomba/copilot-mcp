@@ -15,7 +15,25 @@ import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
-import { aiAssistedSetupType, getReadmeType } from "../../../src/shared/types/rpcTypes";
+import { aiAssistedSetupType, getReadmeType, cloudMCPInterestType, checkCloudMcpType } from "../../../src/shared/types/rpcTypes";
+interface CloudMcpCheckResult {
+  success: boolean;
+  exists: boolean;
+  installConfig?: {
+    name: string;
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+    inputs: Array<{
+      type: 'promptString';
+      id: string;
+      description: string;
+      password: boolean;
+    }>;
+  };
+  error?: string;
+}
+
 interface RepoCardProps {
   repo: any;
 }
@@ -27,9 +45,47 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [shouldShowInstallButton, setShouldShowInstallButton] = useState(false);
   const [installError, setInstallError] = useState(false);
+  const [readmeLoaded, setReadmeLoaded] = useState(false);
+  const [isLoadingCloudMcp, setIsLoadingCloudMcp] = useState(true);
+  const [cloudMcpDetails, setCloudMcpDetails] = useState<CloudMcpCheckResult | null>(null);
+
+  // Fetch CloudMCP details on mount
+  useEffect(() => {
+    messenger.start();
+    
+    async function fetchCloudMcpDetails() {
+      try {
+        const result = await messenger.sendRequest(checkCloudMcpType, {
+          type: 'extension'
+        }, {
+          repoUrl: repo.url,
+          repoName: repo.name,
+          repoFullName: repo.fullName
+        });
+        
+        setCloudMcpDetails(result);
+        setIsLoadingCloudMcp(false);
+      } catch (error) {
+        console.error("Failed to fetch CloudMCP details:", error);
+        setCloudMcpDetails(null);
+        setIsLoadingCloudMcp(false);
+      }
+    }
+    
+    fetchCloudMcpDetails();
+  }, [messenger, repo.url, repo.name, repo.fullName]);
+
+  // Check CloudMCP details whenever they change
+  useEffect(() => {
+    if (cloudMcpDetails && cloudMcpDetails.success && cloudMcpDetails.installConfig) {
+      // We have installation config from CloudMCP, so we can show the install button
+      setShouldShowInstallButton(true);
+    }
+  }, [cloudMcpDetails]);
 
   useEffect(() => {
     messenger.start();
+    
     async function getReadme() {
       const result= await messenger.sendRequest(getReadmeType, {
         type: 'extension'
@@ -38,47 +94,29 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
         fullName: repo.fullName,
         owner: repo.owner
       });
-      if (result.readme && result.fullName === repo.fullName) {
-        setReadmeContent(result.readme);
-        const readmeLines = result.readme.replace(/\n/g, "");
-        const showButton =
-          readmeLines.includes(`"command": "uvx"`) ||
-          readmeLines.includes(`"command": "npx"`) ||
-          readmeLines.includes(`"command": "pypi"`) ||
-          readmeLines.includes(`"command": "docker"`);
-        setShouldShowInstallButton(showButton);
-      } else {
-        setShouldShowInstallButton(false);
+      if (result.fullName === repo.fullName) {
+        setReadmeLoaded(true);
+        if (result.readme) {
+          setReadmeContent(result.readme);
+          // Only check readme content if we don't have CloudMCP details with installConfig
+          if (!cloudMcpDetails || !cloudMcpDetails.success || !cloudMcpDetails.installConfig) {
+            const readmeLines = result.readme.replace(/\n/g, "");
+            const showButton =
+              readmeLines.includes(`"command": "uvx"`) ||
+              readmeLines.includes(`"command": "npx"`) ||
+              readmeLines.includes(`"command": "pypi"`) ||
+              readmeLines.includes(`"command": "docker"`);
+            setShouldShowInstallButton(showButton);
+          }
+        } else {
+          setReadmeContent("");
+          if (!cloudMcpDetails || !cloudMcpDetails.success || !cloudMcpDetails.installConfig) {
+            setShouldShowInstallButton(false);
+          }
+        }
       }
     }
     getReadme();
-
-    
-    //   const message = event.data;
-    //   console.log("Received message:", message);
-    //   if (message.type === "receivedReadme" && message.payload.fullName === repo.fullName) {
-    //     const currentReadmeContent: string = message.payload.readme;
-    //     setReadmeContent(currentReadmeContent);
-    //     if (currentReadmeContent) {
-    //       const readmeLines = currentReadmeContent.replace(/\n/g, "");
-    //       const showButton =
-    //         readmeLines.includes(`"command": "uvx"`) ||
-    //         readmeLines.includes(`"command": "npx"`) ||
-    //         readmeLines.includes(`"command": "pypi"`) ||
-    //         readmeLines.includes(`"command": "docker"`);
-    //       setShouldShowInstallButton(showButton);
-    //     } else {
-    //       setShouldShowInstallButton(false);
-    //     }
-    //   } else if (message.type === "finishInstall" && message.payload.fullName === repo.fullName) {
-    //     setIsLoading(false);
-    //   }
-    // };
-
-    // window.addEventListener("message", handleMessage);
-    // return () => {
-    //   window.removeEventListener("message", handleMessage);
-    // };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messenger]);
 
@@ -95,19 +133,45 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
 
   // shouldShowInstallButton is now a state variable updated by useEffect
 
+  const handleCloudMCPClick = () => {
+    // Send telemetry event
+    messenger.sendNotification(cloudMCPInterestType, {
+      type: 'extension'
+    }, {
+      repoName: repo.fullName,
+      repoOwner: repo.author.name,
+      timestamp: new Date().toISOString()
+    });
+  };
+
   const handleInstallClick = async () => {
     setIsLoading(true);
-    if (!readmeContent) {
-      console.error("README content is not available for install.");
+    
+    // Build install payload
+    const installPayload: {
+      repo: any;
+      cloudMcpDetails?: CloudMcpCheckResult;
+    } = {
+      repo: { ...repo }
+    };
+    
+    if (cloudMcpDetails && cloudMcpDetails.success && cloudMcpDetails.installConfig) {
+      // We have CloudMCP installation config, include it in the payload
+      installPayload.cloudMcpDetails = cloudMcpDetails;
+    } else if (readmeContent) {
+      // Fall back to readme content for LM parsing
+      installPayload.repo.readme = readmeContent;
+    } else {
+      console.error("Neither CloudMCP details nor README content is available for install.");
       setIsLoading(false);
       return;
     }
-    // Listener for "finish" is now part of the main message handler
+    
+    // Send install request
     const result = await messenger.sendRequest(aiAssistedSetupType, {
       type: 'extension'
-    }, {
-      repo: { ...repo, readme: readmeContent }
-    });
+    }, installPayload);
+    
     if (result) {
       setIsLoading(false);
       setInstallError(false);
@@ -115,7 +179,6 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
       setIsLoading(false);
       setInstallError(true);
     }
-    // setIsLoading(false) will be handled by 'finishInstall' message
   };
 
   return (
@@ -167,38 +230,57 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             README Snippet:
           </h4>
           <div className="text-xs p-2 border rounded-md max-h-24 overflow-y-auto prose prose-sm">
-            {readmeContent ? (
-              <ReactMarkdown
-                children={readmeContent}
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-              />
+            {readmeLoaded ? (
+              readmeContent ? (
+                <ReactMarkdown
+                  children={readmeContent}
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                />
+              ) : (
+                <p className="text-gray-500 italic">README unavailable</p>
+              )
             ) : (
               <p>Loading README...</p>
             )}
           </div>
         </div>
       </CardContent>
-      {shouldShowInstallButton && !isLoading && (
-        <CardFooter className="pt-2 pb-3 border-t">
+      {!installError && (
+        <CardFooter className="pt-2 pb-3 border-t space-x-2">
           <Button
             variant={"outline"}
             onClick={handleInstallClick}
-            className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+            disabled={!shouldShowInstallButton || isLoading || isLoadingCloudMcp}
+            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Install
+            {isLoadingCloudMcp ? "Loading..." : isLoading ? "Installing..." : "Install"}
+          </Button>
+          <Button
+            variant={"outline"}
+            onClick={handleCloudMCPClick}
+            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] opacity-70 hover:opacity-100"
+          >
+            Deploy on CloudMCP.run
           </Button>
         </CardFooter>
       )}
       {/* Red button to indicate install error with "Retry Install" text */}
       {installError && (
-        <CardFooter className="pt-2 pb-3 border-t">
+        <CardFooter className="pt-2 pb-3 border-t space-x-2">
           <Button
             variant={"destructive"}
             onClick={handleInstallClick}
-            className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
           >
             Retry Install
+          </Button>
+          <Button
+            variant={"outline"}
+            onClick={handleCloudMCPClick}
+            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] opacity-70 hover:opacity-100"
+          >
+            Deploy on CloudMCP.run
           </Button>
         </CardFooter>
       )}

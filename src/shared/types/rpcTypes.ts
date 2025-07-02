@@ -5,7 +5,7 @@ import {
 
 export const searchServersType: RequestType<
 	{ query: string; page?: number; perPage?: number },
-	{ results: any[]; totalCount: number; currentPage: number; perPage: number }
+	{ results: any[]; totalCount: number; currentPage: number; perPage: number; cloudMcpDetails?: Record<string, any> }
 > = { method: "search" };
 
 export const getReadmeType: RequestType<
@@ -27,6 +27,20 @@ export const updateServerEnvVarType: NotificationType<
 
 export const deleteServerType: NotificationType<{ serverName: string }> = { method: "deleteServer" };
 
-export const aiAssistedSetupType: RequestType<{repo: any}, boolean> = { method: "aiAssistedSetup" };
+import type { CloudMcpCheckResult } from "../../utilities/cloudMcpIndexer";
+
+export const aiAssistedSetupType: RequestType<{repo: any; cloudMcpDetails?: CloudMcpCheckResult}, boolean> = { method: "aiAssistedSetup" };
 
 export const sendFeedbackType: NotificationType<{ feedback: string }> = { method: "sendFeedback" };
+
+export const cloudMCPInterestType: NotificationType<{ 
+	repoName: string; 
+	repoOwner: string;
+	timestamp: string;
+}> = { method: "cloudMCPInterest" };
+
+export const checkCloudMcpType: RequestType<{
+	repoUrl: string;
+	repoName: string;
+	repoFullName?: string;
+}, CloudMcpCheckResult> = { method: "checkCloudMcp" };

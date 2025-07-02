@@ -1,12 +1,15 @@
 import { logger, getLogger } from "./telemetry";
 import { setCommonLogAttributes } from "./utilities/signoz";
 import { shutdownLogs } from "./utilities/logging";
+import { initializeContext, logExtensionActivate, logError, logEvent } from "./telemetry/standardizedTelemetry";
+import { TelemetryEvents } from "./telemetry/types";
 import * as vscode from "vscode";
 import { TelemetryReporter } from "@vscode/extension-telemetry";
 import { CopilotMcpViewProvider } from "./panels/ExtensionPanel";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
 import { handler } from "./McpAgent";
+import { cloudMcpIndexer } from "./utilities/cloudMcpIndexer";
 const connectionString =
 	"InstrumentationKey=2c71cf43-4cb2-4e25-97c9-bd72614a9fe8;IngestionEndpoint=https://westus2-2.in.applicationinsights.azure.com/;LiveEndpoint=https://westus2.livediagnostics.monitor.azure.com/;ApplicationId=862c3c9c-392a-4a12-8475-5c9ebeff7aaf";
 const telemetryReporter = new TelemetryReporter(connectionString);
@@ -29,11 +32,17 @@ export async function activate(context: vscode.ExtensionContext) {
 	console.log("Initializing Copilot Provider");
 	const copilot = await CopilotChatProvider.initialize(context);
 	const models = await copilot.getModels();
+	
+	// Initialize standardized telemetry context  
+	const extensionVersion = vscode.extensions.getExtension('AutomataLabs.copilot-mcp')?.packageJSON?.version || 'unknown';
+	initializeContext(session, extensionVersion);
 	setCommonLogAttributes({ ...session.account });
-	if (vscode.env.isNewAppInstall) {
-		getLogger().logUsage("newUserInstall");
-	}
-	getLogger().logUsage("activate");
+	
+	// Initialize CloudMCP indexer
+	cloudMcpIndexer.initialize(context);
+	
+	// Log extension activation with new standardized telemetry
+	logExtensionActivate(vscode.env.isNewAppInstall);
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "copilot-mcp" is now active!');
@@ -84,6 +93,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 // Helper that shows the WHATS_NEW.md preview when appropriate
 async function showUpdatesToUser(context: vscode.ExtensionContext) {
+	let currentVersion = 'unknown';
+	let lastVersion: string | undefined;
+	
 	try {
 		// Locate this extension in VS Code's registry so we can read its package.json metadata
 		const thisExtension = vscode.extensions.all.find(
@@ -93,9 +105,9 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 			return; // Should never happen, but guard just in case
 		}
 
-		const currentVersion: string = thisExtension.packageJSON.version;
+		currentVersion = thisExtension.packageJSON.version;
 		const storageKey = "copilotMcp.whatsNewVersionShown";
-		const lastVersion: string | undefined = context.globalState.get(storageKey);
+		lastVersion = context.globalState.get(storageKey);
 
 		// Show the What's New page only for new installs or when the user upgrades to a version they haven't seen yet
 		if (lastVersion === currentVersion) {
@@ -110,8 +122,21 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 		await context.globalState.update(storageKey, currentVersion);
 	} catch (error) {
 		console.error("Failed to display What's New information:", error);
+		// Log error with standardized telemetry
+		logError(error as Error, 'whats-new-display', {
+			currentVersion,
+			lastVersion: lastVersion || 'none',
+		});
 	}
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() { }
+export function deactivate() {
+	// Log extension deactivation
+	logEvent({
+		name: TelemetryEvents.EXTENSION_DEACTIVATE,
+		properties: {
+			timestamp: new Date().toISOString(),
+		},
+	});
+}
