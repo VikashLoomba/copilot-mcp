@@ -221,5 +221,9 @@ export async function getReadme(payload: GetReadmeParams) {
 			},
 		}
 	);
+	// Check if repository and readme exist before accessing text
+	if (!repository || !repository.readme || !repository.readme.text) {
+		return ""; // Return empty string if no README found
+	}
 	return repository.readme.text;
 }

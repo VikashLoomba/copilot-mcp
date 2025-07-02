@@ -1,13 +1,27 @@
 import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { getReadme, searchMcpServers } from "../utilities/repoSearch";
+import { getReadme, searchMcpServers, type McpServerResult } from "../utilities/repoSearch";
 import { type TelemetryReporter } from "@vscode/extension-telemetry";
 import { CopilotChatProvider } from "../utilities/CopilotChat";
 import { dspyExamples } from "../utilities/const";
 import { AxGen } from "@ax-llm/ax";
 import { openMcpInstallUri, readmeExtractionRequest } from "../McpAgent";
 import { getLogger } from "../telemetry";
+import { cloudMcpIndexer } from "../utilities/cloudMcpIndexer";
+import { 
+	logWebviewSearch, 
+	logWebviewInstallAttempt, 
+	logWebviewAiSetupSuccess, 
+	logWebviewAiSetupError, 
+	logWebviewFeedbackSent, 
+	logWebviewInstallUriOpened,
+	logError,
+	logEvent,
+	startPerformanceTimer,
+	endPerformanceTimer
+} from "../telemetry/standardizedTelemetry";
+import { TelemetryEvents } from "../telemetry/types";
 import { Messenger } from "vscode-messenger";
 import {
 	aiAssistedSetupType,
@@ -18,6 +32,8 @@ import {
 	sendFeedbackType,
 	updateMcpConfigType,
 	updateServerEnvVarType,
+	cloudMCPInterestType,
+	checkCloudMcpType,
 } from "../shared/types/rpcTypes";
 
 // Helper function to read servers from .vscode/mcp.json
@@ -87,6 +103,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		messenger.onRequest(searchServersType, async (payload) => {
 			const page = payload.page || 1;
 			const perPage = payload.perPage || 10;
+			
 			const searchResponse = await searchMcpServers({
 				query: payload.query,
 				page,
@@ -94,12 +111,41 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			});
 			const results = searchResponse?.results || [];
 			const totalCount = searchResponse?.totalCount || 0;
-			getLogger().logUsage("searchMcpServers", {
-				query: payload.query,
-				accountId: this._session.account.id,
-				accountLabel: this._session.account.label,
-			});
-			return { results, totalCount, currentPage: page, perPage };
+			
+			// Log webview search with standardized telemetry
+			logWebviewSearch(payload.query, totalCount);
+			
+			// Return the response immediately without cloudMcpDetails
+			// Individual repo cards will fetch their own CloudMCP details
+			return { 
+				results, 
+				totalCount, 
+				currentPage: page, 
+				perPage
+			};
+		});
+
+		messenger.onRequest(checkCloudMcpType, async (payload) => {
+			const { repoUrl, repoName, repoFullName } = payload;
+			
+			try {
+				// Check single repository with CloudMCP
+				const result = await cloudMcpIndexer.checkSingleRepository({
+					url: repoUrl,
+					name: repoName,
+					fullName: repoFullName
+				});
+				
+				// Return the CloudMCP check result directly
+				return result;
+			} catch (error) {
+				console.error("Error checking CloudMCP for repository:", error);
+				return {
+					success: false,
+					exists: false,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				};
+			}
 		});
 
 		messenger.onRequest(getReadmeType, async (payload) => {
@@ -114,6 +160,14 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				return { readme: readmeContent, fullName };
 			} catch (e) {
 				console.error("Error getting readme", e);
+				
+				// Log README fetch error with standardized telemetry
+				logError(e as Error, 'readme-fetch', {
+					fullName,
+					repoOwner: owner.login,
+					repoName: name,
+				});
+				
 				return { readme: "", fullName };
 			}
 		});
@@ -126,48 +180,76 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		messenger.onRequest(aiAssistedSetupType, async (payload) => {
-			getLogger().logUsage("attemptMcpServerInstall", {
-				repoId: payload.repo?.id,
-				repoName: payload.repo?.name,
-				repoUrl: payload.repo?.url.split("//")[1],
-			});
-			// Expecting payload.repo and payload.readme
-			const readmeToParse = payload.repo.readme;
-			if (!readmeToParse) {
-				vscode.window.showErrorMessage(
-					"README content is missing in aiAssistedSetup message."
-				);
-				return false;
-			}
-
+			// Log AI assisted setup attempt with standardized telemetry
+			logWebviewInstallAttempt(payload.repo?.fullName || payload.repo?.name || 'unknown');
+			startPerformanceTimer('ai-setup');
+			
 			try {
-				const result = await this.vscodeLMResponse(
-					readmeToParse,
-					webviewView,
-					payload.repo?.fullName
-				);
-				if (result) {
-					getLogger().logUsage("aiAssistedSetupSuccess", {
-						repoId: payload.repo?.id,
-						repoName: payload.repo?.name,
-						repoUrl: payload.repo?.url.split("//")[1],
+				let setupResult;
+				
+				// Check if we have CloudMCP details with install configuration
+				if (payload.cloudMcpDetails && payload.cloudMcpDetails.success && payload.cloudMcpDetails.installConfig) {
+					console.log("Using CloudMCP installation configuration");
+					
+					// Use the installConfig directly - it's already in the right format
+					const installConfig = payload.cloudMcpDetails.installConfig;
+					
+					const cmdResponse = await openMcpInstallUri(installConfig);
+					console.log("CMD RESPONSE: ", cmdResponse);
+					
+					if (cmdResponse && cmdResponse.uri) {
+						logWebviewInstallUriOpened(cmdResponse.uri);
+					}
+					
+					setupResult = installConfig;
+				} else {
+					// Fall back to parsing README with LM
+					const readmeToParse = payload.repo.readme;
+					if (!readmeToParse) {
+						vscode.window.showErrorMessage(
+							"Neither CloudMCP details nor README content is available for installation."
+						);
+						return false;
+					}
+					
+					setupResult = await this.vscodeLMResponse(
+						readmeToParse,
+						webviewView,
+						payload.repo?.fullName
+					);
+				}
+				
+				if (setupResult) {
+					// Log successful AI assisted setup
+					logWebviewAiSetupSuccess();
+					endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
+						success: true,
+						repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
+						usedCloudMcp: !!payload.cloudMcpDetails,
 					});
 					return true;
 				} else {
-					getLogger().logUsage("aiAssistedSetupError", {
-						repoId: payload.repo?.id,
-						repoName: payload.repo?.name,
-						repoUrl: payload.repo?.url.split("//")[1],
+					// Log failed AI assisted setup
+					logWebviewAiSetupError('Setup failed - no result returned');
+					endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
+						success: false,
+						repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
+						usedCloudMcp: !!payload.cloudMcpDetails,
 					});
 					return false;
 				}
 			} catch (error) {
 				console.error("Error during AI Assisted Setup: ", error);
-				getLogger().logError("aiAssistedSetupError", {
-					repoId: payload.repo?.id,
-					repoName: payload.repo?.name,
-					repoUrl: payload.repo?.url.split("//")[1],
+				
+				// Log error with standardized error telemetry
+				logWebviewAiSetupError(error as Error);
+				endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
+					success: false,
+					repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
+					error: true,
+					usedCloudMcp: !!payload.cloudMcpDetails,
 				});
+				
 				// Notify webview about the error
 				return false;
 			}
@@ -195,6 +277,11 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				}
 			} catch (error) {
 				console.error("Error updating server env var: ", error);
+				// Log error with standardized telemetry
+				logError(error as Error, 'server-env-var-update', {
+					serverName: payload.serverName,
+					envKey: payload.envKey,
+				});
 				vscode.window.showErrorMessage("Error updating server environment variable.");
 			}
 		});
@@ -202,6 +289,16 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		messenger.onNotification(deleteServerType, async (payload) => {
 			try {
 				await deleteServer(webviewView, payload.serverName);
+				
+				// Log successful server deletion
+				logEvent({
+					name: 'webview.server.deleted',
+					properties: {
+						serverName: payload.serverName,
+						success: true,
+					},
+				});
+				
 				// After deletion, tell the webview to re-fetch the config
 				const currentServers = await getAllServers();
 				messenger.sendNotification(
@@ -213,16 +310,39 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				);
 			} catch (error) {
 				console.error("Error deleting server: ", error);
+				
+				// Log server deletion error
+				logError(error as Error, 'server-deletion', {
+					serverName: payload.serverName,
+				});
+				
 				vscode.window.showErrorMessage("Error deleting server.");
 			}
 		});
 
 		messenger.onNotification(sendFeedbackType, async (payload) => {
-			getLogger().logUsage("sendFeedback", {
-				feedback: payload.feedback,
-			});
+			// Log feedback submission with standardized telemetry
+			logWebviewFeedbackSent('general');
 			vscode.window.showInformationMessage(
 				`Feedback submitted. Thank you!`
+			);
+		});
+
+		messenger.onNotification(cloudMCPInterestType, async (payload) => {
+			// Log CloudMCP interest with telemetry
+			logEvent({
+				name: 'webview.cloudmcp.interest',
+				properties: {
+					repoName: payload.repoName,
+					repoOwner: payload.repoOwner,
+					timestamp: payload.timestamp,
+				},
+			});
+			
+			// Show notification to user
+			vscode.window.showInformationMessage(
+				`Thanks for your interest in CloudMCP.run! We'll notify you when it's available. This service will allow you to deploy ${payload.repoName} to the cloud with one click.`,
+				{ modal: false }
 			);
 		});
 
@@ -255,39 +375,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		//         accountLabel: this._session.account.label,});
 		// });
 
-		// Handle messages from the webview
-		webviewView.webview.onDidReceiveMessage(async (message) => {
-			switch (message.type) {
-				// case "deleteServer": {
-				// 	const serverKeyToDelete = message.key;
-				// 	if (!serverKeyToDelete) {
-				// 		vscode.window.showErrorMessage(
-				// 			"Server key to delete is missing."
-				// 		);
-				// 		// Optionally, inform the webview about the error
-				// 		webviewView.webview.postMessage({
-				// 			type: "error",
-				// 			data: {
-				// 				message: "Server key to delete is missing.",
-				// 			},
-				// 		});
-				// 		return;
-				// 	}
-
-				// 	try {
-				// 		await deleteServer(webviewView, serverKeyToDelete);
-				// 	} catch (error) {}
-				// 	break;
-				// }
-				// It's good practice to have a default case, even if just for logging
-				default:
-					console.warn(
-						"Received unknown message type from webview:",
-						message.type
-					);
-					break;
-			}
-		}, undefined);
+		// All message handling is now done through vscode-messenger
+		// No need for legacy onDidReceiveMessage handler
 		webviewView.show(false);
 	}
 
@@ -360,10 +449,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					});
 					const cmdResponse = await openMcpInstallUri(object);
 					console.log("CMD RESPONSE: ", cmdResponse);
-					if (cmdResponse) {
-						getLogger().logUsage("openedInstallURI", {
-							server: JSON.stringify(object),
-						});
+					if (cmdResponse && cmdResponse.uri) {
+						// Log install URI opened with standardized telemetry
+						logWebviewInstallUriOpened(cmdResponse.uri);
 					}
 					progress.report({
 						message: `Added MCP Server`,
@@ -371,8 +459,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					return object;
 					// return object.object;
 				} catch (err: any) {
-					getLogger().logUsage("error.aiAssistedSetup", {
-						...err,
+					// Log error with standardized error telemetry
+					logError(err, 'ai-assisted-setup', {
+						context: 'setup-execution',
 					});
 					// Making the chat request might fail because
 					// - model does not exist

@@ -43,28 +43,8 @@ const SearchMCPServers: React.FC = () => {
     const [totalResults, setTotalResults] = useState<number>(0);
     // totalPages will be derived from totalResults and ITEMS_PER_PAGE
 
-    useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            const message = event.data; // The event data normally comes in the `data` property
-            if (message.type === 'receivedSearchResults') {
-                console.log('receivedSearchResults', message.data.results);
-                setResults(message.data.results || []);
-                setTotalResults(message.data.totalCount || 0);
-                setIsLoading(false);
-                setError(null);
-            } else if (message.type === 'error') { // Handle potential errors from backend
-                setError(message.data.message || 'An unknown error occurred.');
-                setIsLoading(false);
-            }
-        };
-
-        window.addEventListener('message', handleMessage);
-
-        // Cleanup listener on component unmount
-        return () => {
-            window.removeEventListener('message', handleMessage);
-        };
-    }, []);
+    // Message handling is done through vscode-messenger
+    // No need for legacy window message listener
 
     useEffect(() => {
         messenger.start();
@@ -74,17 +54,30 @@ const SearchMCPServers: React.FC = () => {
         if (debouncedSearchTerm && messenger) {
             setIsLoading(true);
             setError(null);
-            const result = await messenger.sendRequest(searchServersType, {
-                type: 'extension'
-            },{
-                query: debouncedSearchTerm,
-                page: page,
-                perPage: ITEMS_PER_PAGE,
-            });
-            setResults(result.results || []);
-            setTotalResults(result.totalCount || 0);
-            setIsLoading(false);
-            setError(null);
+            try {
+                const result = await messenger.sendRequest(searchServersType, {
+                    type: 'extension'
+                },{
+                    query: debouncedSearchTerm,
+                    page: page,
+                    perPage: ITEMS_PER_PAGE,
+                });
+                
+                // Add defensive checks without logging
+                if (!result) {
+                    setError('No response from server');
+                    setIsLoading(false);
+                    return;
+                }
+                
+                setResults(result.results || []);
+                setTotalResults(result.totalCount || 0);
+                setIsLoading(false);
+                setError(null);
+            } catch  {
+                setError('Search failed');
+                setIsLoading(false);
+            }
         } else if (!debouncedSearchTerm) {
             setResults([]);
             setTotalResults(0);
@@ -144,7 +137,10 @@ const SearchMCPServers: React.FC = () => {
                 <>
                     <div className="grid grid-cols-1 gap-4">
                         {(results as any).map((repo: any) => (
-                            <RepoCard key={repo.id} repo={repo} />
+                            <RepoCard 
+                                key={repo.id} 
+                                repo={repo} 
+                            />
                         ))}
                     </div>
                     {totalPages > 1 && (

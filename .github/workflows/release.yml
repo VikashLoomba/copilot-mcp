@@ -11,10 +11,10 @@ on:
         type: string
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     
     steps:
     - uses: actions/checkout@v4
@@ -25,12 +25,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Install webview dependencies
-      run: npm ci --prefix web --legacy-peer-deps
+        cache: 'npm'
         
     - name: Get version
       id: get_version
@@ -61,34 +56,126 @@ jobs:
         git tag -a "v${{ inputs.version }}" -m "Release version ${{ inputs.version }}"
         git push origin "v${{ inputs.version }}"
 
-    - name: Build & Package VSIX
-      run: npm run package-extension
-      env:
-        VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install webview dependencies
+      run: npm ci --prefix web --legacy-peer-deps
+
+    - name: Build extension and web UI
+      run: npm run build:all
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          dist/
+          web/dist/
+          package.json
+          package-lock.json
+          *.md
+          *.js
+          *.mjs
+          *.json
+          resources/
+        retention-days: 7
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+
+    - name: Install production dependencies
+      run: npm ci --production
+
+    - name: Validate build artifacts
+      run: |
+        test -f dist/extension.js || (echo "Missing dist/extension.js" && exit 1)
+        test -d web/dist || (echo "Missing web/dist directory" && exit 1)
+        echo "Build artifacts validated successfully"
+
+    - name: Package VSIX
+      run: npx @vscode/vsce@2.32.0 package -o copilot-mcp-${{ needs.build.outputs.version }}.vsix --allow-missing-repository
+
+    - name: Verify VSIX integrity
+      run: |
+        if [ ! -f "copilot-mcp-${{ needs.build.outputs.version }}.vsix" ]; then
+          echo "VSIX file was not created"
+          exit 1
+        fi
+        
+        # Check file size (should be reasonable, not 0 bytes)
+        file_size=$(stat -c%s "copilot-mcp-${{ needs.build.outputs.version }}.vsix")
+        if [ "$file_size" -lt 1000000 ]; then
+          echo "VSIX file seems too small: $file_size bytes"
+          exit 1
+        fi
+        
+        # Generate checksum for integrity verification
+        sha256sum "copilot-mcp-${{ needs.build.outputs.version }}.vsix" > vsix.sha256
+        echo "VSIX file verified successfully (size: $file_size bytes)"
+        echo "SHA256: $(cat vsix.sha256)"
+
+    - name: Upload VSIX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: vsix-package
+        path: |
+          copilot-mcp-${{ needs.build.outputs.version }}.vsix
+          vsix.sha256
+        retention-days: 7
+
+  release:
+    needs: [build, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Download VSIX artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: vsix-package
         
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ steps.get_version.outputs.version }}
-        release_name: Release v${{ steps.get_version.outputs.version }}
+        tag_name: v${{ needs.build.outputs.version }}
+        name: Release v${{ needs.build.outputs.version }}
+        files: |
+          copilot-mcp-${{ needs.build.outputs.version }}.vsix
+          vsix.sha256
         draft: false
         prerelease: false
 
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish:
+    needs: [build, package]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download VSIX artifact
+      uses: actions/download-artifact@v4
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./copilot-mcp-${{ steps.get_version.outputs.version }}.vsix
-        asset_name: copilot-mcp-${{ steps.get_version.outputs.version }}.vsix
-        asset_content_type: application/octet-stream
-        
-    - name: Publish
-      run: npm run deploy
+        name: vsix-package
+
+    - name: Publish to Marketplace
+      run: npx @vscode/vsce@2.32.0 publish --packagePath copilot-mcp-${{ needs.build.outputs.version }}.vsix
       env:
         VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
       

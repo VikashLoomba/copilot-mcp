@@ -6,44 +6,20 @@ import {
 	SCOPES,
 } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
-import { AxAgent, AxFunction, AxGen } from "@ax-llm/ax";
+import { AxAgent, AxFunction, ax, f } from "@ax-llm/ax";
 import { getReadme, searchMcpServers2 } from "./utilities/repoSearch";
-import { getLogger } from "./telemetry";
+import { cloudMcpIndexer } from "./utilities/cloudMcpIndexer";
+import { 
+	logChatSearch, 
+	logChatInstall, 
+	logChatUnknownIntent, 
+	logChatInstallUriOpened,
+	logError,
+	startPerformanceTimer,
+	endPerformanceTimer
+} from "./telemetry/standardizedTelemetry";
+import { TelemetryEvents } from "./telemetry/types";
 
-const githubRepositorySearch: AxFunction = {
-	name: "githubRepoSearch",
-	description:
-		"Use this function to search Github for repositories related to the query",
-	func: searchMcpServers2,
-	parameters: {
-		type: "object",
-		properties: {
-			query: {
-				description: `"The query to search for repositories on github for. 
-        Usage Notes: 
-        - Use quotations around multi-word search terms. For example, if you want to search for issues with the label "In progress," you'd search for label:"in progress". Search is not case sensitive.
-        With the \`in\` qualifier you can restrict your search to the repository name, repository description, repository topics, contents of the README file, or any combination of these. When you omit this qualifier, only the repository name, description, and topics are searched.
-
-        | Qualifier | Example |
-        | --- | --- |
-        | \`in:name\` | [**jquery in:name**] matches repositories with "jquery" in the repository name. |
-        | \`in:description\` | [**jquery in:name,description**] matches repositories with "jquery" in the repository name or description. |
-        | \`in:topics\` | [**jquery in:topics**] matches repositories labeled with "jquery" as a topic. |
-        | \`in:readme\` | [**jquery in:readme**] matches repositories mentioning "jquery" in the repository's README file. |
-        | \`repo:owner/name\` | [**repo:octocat/hello-world**] matches a specific repository name. |
-
-        You can find a repository by searching for content in the repository's README file using the \`in:readme\` qualifier
-        "`,
-				type: "string",
-			},
-			nextPageCursor: {
-				description: "Cursor for the next page of results.",
-				type: "string",
-			}
-		},
-		required: ["query", "nextPageCursor"],
-	},
-};
 const getRepoReadme = {
 	func: getReadme,
 	name: "getReadme",
@@ -72,26 +48,20 @@ export const handler: vscode.ChatRequestHandler = async (
 	stream: vscode.ChatResponseStream,
 	token: vscode.CancellationToken
 ): Promise<any> => {
-	const logger = getLogger();
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
 	provider.setOptions({ debug: true });
-	const Octokit = await import("@octokit/rest");
 
 	const session = await vscode.authentication.getSession(
 		GITHUB_AUTH_PROVIDER_ID,
 		SCOPES,
 		{ createIfNone: true }
 	);
-	const octokit = new Octokit.Octokit({
-		auth: session.accessToken,
-	});
 
 	if (request.command === "search") {
-		logger.logUsage("chatParticipant:search", {
-			request,
-			user: session.account,
-		});
+		// Log standardized chat search event
+		logChatSearch(request.prompt, session.account);
+		startPerformanceTimer('chat-search');
 		const SearchTool = new GitHubSearchTool(
 			request.prompt,
 			stream
@@ -118,15 +88,37 @@ export const handler: vscode.ChatRequestHandler = async (
 				},
 				token
 			);
-			return await libResult.result;
+			const result = await libResult.result;
+			
+			// Log successful search completion
+			endPerformanceTimer('chat-search', TelemetryEvents.PERFORMANCE_SEARCH, {
+				success: true,
+				query: request.prompt,
+				queryLength: request.prompt.length,
+			});
+			
+			return result;
 		} catch (error) {
+			// Log error with standardized error telemetry
+			logError(error as Error, 'chat-search', {
+				query: request.prompt,
+				queryLength: request.prompt.length,
+				command: request.command,
+			});
+			
+			// Also end performance timer for failed operations
+			endPerformanceTimer('chat-search', TelemetryEvents.PERFORMANCE_SEARCH, {
+				success: false,
+				query: request.prompt,
+				queryLength: request.prompt.length,
+			});
+			
 			console.dir(error, { depth: null, colors: true });
 		}
 	} else if (request.command === "install") {
-		logger.logUsage("chatParticipant:install", {
-			request,
-			user: session.account,
-		});
+		// Log standardized chat install event
+		logChatInstall(request.prompt, session.account);
+		startPerformanceTimer('chat-install');
 		// Add logic here to handle the install scenario
 		try {
 			const llmResponse = sendChatParticipantRequest(
@@ -162,13 +154,9 @@ export const handler: vscode.ChatRequestHandler = async (
 								const cmdResponse = await openMcpInstallUri(
 									object
 								);
-								if (cmdResponse) {
-									logger.logUsage(
-										"chatParticipant:install:openedInstallURI",
-										{
-											server: JSON.stringify({ repoName: `${options.input.repoOwner}/${options.input.repoName}` }),
-										}
-									);
+								if (cmdResponse && cmdResponse.uri) {
+									// Log install URI opened with standardized telemetry
+									logChatInstallUriOpened(cmdResponse.uri);
 								}
 								// Open the URI using VS Code commands
 								return new vscode.LanguageModelToolResult([
@@ -182,13 +170,37 @@ export const handler: vscode.ChatRequestHandler = async (
 				},
 				token
 			);
-			return await llmResponse.result;
+			const result = await llmResponse.result;
+			
+			// Log successful install completion
+			endPerformanceTimer('chat-install', TelemetryEvents.PERFORMANCE_INSTALL, {
+				success: true,
+				query: request.prompt,
+				queryLength: request.prompt.length,
+			});
+			
+			return result;
 			//   console.dir(agentResponse, { depth: null, colors: true });
 		} catch (error) {
+			// Log error with standardized error telemetry
+			logError(error as Error, 'chat-install', {
+				query: request.prompt,
+				queryLength: request.prompt.length,
+				command: request.command,
+			});
+			
+			// Also end performance timer for failed operations
+			endPerformanceTimer('chat-install', TelemetryEvents.PERFORMANCE_INSTALL, {
+				success: false,
+				query: request.prompt,
+				queryLength: request.prompt.length,
+			});
+			
 			console.dir(error, { depth: null, colors: true });
 		}
 	} else {
-		logger.logUsage("chatParticipant:unknownIntent", { ...request });
+		// Log unknown intent with standardized telemetry
+		logChatUnknownIntent(request.command || 'unknown');
 	}
 };
 
@@ -205,38 +217,81 @@ class GitHubSearchTool
 		const provider = copilot.provider;
 		provider.setOptions({ debug: true, });
 		console.log("options: ", options);
-		const queryGeneratorAgent = new AxAgent<
-			{ userQuery: string },
-			{ query: string }
-		>(
-			{
-				name: "Query Generator Agent",
-				description: "An AI Agent that generates search queries for finding MCP servers.",
-				signature: `userQuery:string "The original user message that was sent to the agent." -> query:string "A search query that can be used to find relevant MCP server repositories using the GitHub repository search API."`,
+		// Create a wrapper function that uses the query generator
+		const generateAndSearchRepos: AxFunction = {
+			name: "generateAndSearchRepos",
+			description: "Generate a search query and search for MCP repositories",
+			func: async (args: { originalUserMessage: string }) => {
+				// First, generate the query
+				const queryGeneratorAgent = new AxAgent<
+					{ originalUserMessage: string },
+					{ query: string }
+				>({
+					name: "Query Generator Agent",
+					description: "An AI Agent that generates search queries for finding MCP servers.",
+					signature: `originalUserMessage:string "The original user message that was sent to the agent." -> query:string "A search query that can be used to find relevant MCP server repositories using the GitHub repository search API."`,
+				});
+				
+				queryGeneratorAgent.setExamples([
+					{
+						originalUserMessage: "Find a MCP server for managing Kubernetes clusters",
+						query: "mcp server kubernetes"
+					},
+					{
+						originalUserMessage: "Search for a MCP server for mysql",
+						query: "mcp server mysql",
+					},
+					{
+						originalUserMessage: "Find a MCP server for managing Docker containers",
+						query: "docker mcp server",
+					},
+					{
+						originalUserMessage: "Search for a MCP server for managing PostgreSQL databases",
+						query: "mcp server postgresql",
+					},
+					{
+						originalUserMessage: "GitHub mcp server",
+						query: "mcp server github"
+					}
+				]);
+				
+				const queryResult = await queryGeneratorAgent.forward(
+					provider,
+					{ originalUserMessage: args.originalUserMessage },
+					{ stream: false }
+				);
+				
+				// Then use the generated query to search
+				const searchResults = await searchMcpServers2({ 
+					query: queryResult.query,
+					// nextPageCursor: ""
+				});
+				
+				// Check search results against CloudMCP asynchronously (non-blocking)
+				if (searchResults?.results?.length > 0) {
+					const repositories = searchResults.results.map((result: any) => ({
+						url: result.url,
+						name: result.fullName.split('/')[1] || result.fullName,
+						fullName: result.fullName
+					}));
+					cloudMcpIndexer.checkRepositories(repositories).catch((error: any) => {
+						console.warn("Failed to check repositories with CloudMCP:", error);
+					});
+				}
+				
+				return searchResults;
+			},
+			parameters: {
+				type: "object",
+				properties: {
+					originalUserMessage: {
+						type: "string",
+						description: "The original user message"
+					}
+				},
+				required: ["originalUserMessage"]
 			}
-		);
-		queryGeneratorAgent.setExamples([
-			{
-				userQuery: "Find a MCP server for managing Kubernetes clusters",
-				query: "mcp server kubernetes"
-			},
-			{
-				userQuery: "Search for a MCP server for mysql",
-				query: "mcp server mysql",
-			},
-			{
-				userQuery: "Find a MCP server for managing Docker containers",
-				query: "docker mcp server",
-			},
-			{
-				userQuery: "Search for a MCP server for managing PostgreSQL databases",
-				query: "mcp server postgresql",
-			},
-			{
-				userQuery: "GitHub mcp server",
-				query: "mcp server github"
-			}
-		]);
+		};
 		const clone_identifier_agent = new AxAgent<
 			{ nameWithOwner: string },
 			{ clone_required: boolean }
@@ -247,19 +302,16 @@ class GitHubSearchTool
 			functions: [getRepoReadme],
 		}, { debug: true }
 		);
-		const primaryAgent = new AxAgent<{
-			originalUserMessage: string;
-		}, {
-			relevantRepositoryResults: JSON[];
-		}>({
+		const primaryAgent = new AxAgent<
+			{ originalUserMessage: string },
+			{ relevantRepositoryResults: any[] }
+		>({
 			name: "Search Coordinator Agent",
 			description:
 				"An AI Agent that coordinates the search for MCP servers using the Query Generator agent + GitHub search tool.",
 			signature: `originalUserMessage:string "The original user message that was sent to the agent." -> relevantRepositoryResults:json[] "An array of repository results. Include all information in the response."`,
-			functions: [githubRepositorySearch],
-			agents: [queryGeneratorAgent],
-
-		}, { debug: true, maxSteps: 5 });
+			functions: [generateAndSearchRepos],
+		});
 
 		const repositoryResponse = await primaryAgent.forward(
 			provider,
@@ -345,26 +397,17 @@ export async function readmeExtractionRequest(readme: string) {
 		commandIdentifierResponse.requires_clone
 	);
 
-	const prompt = new AxGen<
-		{ readme: string },
-		{
-			command: string;
-			name: string;
-			args: string[];
-			env: JSON;
-			inputs: {
-				id: string;
-				type: "promptString";
-				description: "string";
-				password: boolean;
-			}[];
-		}
-	>(
-		`"Extract MCP server details from the readme. User-configurable args and env values extracted from the README.md should use the \${input:<input-id>} syntax." readme:string "MCP server readme with instructions" -> command:string "the command used to start the MCP server. Prefer 'npx', 'docker', and 'uvx' commands.", args:string[] "arguments to pass in to the command", name:string "The name of the MCP server", inputs:json[] "All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources. Type is always 'promptString'.", env:json "Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths."`
-	);
-	prompt.setExamples(dspyExamples);
+	const gen = ax`
+		readme:${f.string('MCP server readme with instructions')} ->
+		command:${f.string('the command used to start the MCP server. Prefer npx, docker, and uvx commands.')},
+		name:${f.string('The name of the MCP server')},
+		args:${f.array(f.string('arguments to pass in to the command'))},
+		env:${f.json('Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths.')},
+		inputs:${f.array(f.json('All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources.'))}
+	`;
+	gen.setExamples(dspyExamples);
 
-	const object = await prompt.forward(
+	const object = await gen.forward(
 		provider,
 		{ readme },
 		{ stream: false }
@@ -378,6 +421,7 @@ export async function openMcpInstallUri(mcpConfig: object) {
 		JSON.stringify(mcpConfig)
 	)}`;
 	const uri = vscode.Uri.parse(uriString);
-	return await vscode.env.openExternal(uri);
-	// Open the URI using VS Code commands
+	const success = await vscode.env.openExternal(uri);
+	// Return object with uri property and success status
+	return { uri: uriString, success };
 }

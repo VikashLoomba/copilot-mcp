@@ -1,5 +1,32 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.54 – CloudMCP.run Integration & Improved Installation Experience
+*(July 2025)*
+
+Get ready for cloud-hosted MCP servers and enjoy a clearer installation experience!
+
+**What's New**
+
+* **CloudMCP.run Preview** – New "Deploy on CloudMCP.run" button on all search results lets you express interest in our upcoming cloud hosting service for MCP servers
+* **Clearer Installation Options** – Install buttons now appear on all search results, with auto-disabled state for servers that require manual setup
+* **Enhanced UI Feedback** – Better visual indicators show which servers support one-click installation vs. manual configuration
+
+---
+
+## Version 0.0.53 – Framework Update & Enhanced AI Integration
+*(July 2025)*
+
+We've upgraded our AI framework to deliver better performance and reliability!
+
+**What's Changed**
+
+* **Updated AI Framework** – Upgraded to @ax-llm/ax v12 with improved API compatibility and performance enhancements
+* **Better Multi-Agent Support** – Refactored our agent architecture for more reliable MCP server discovery and installation
+* **Improved Type Safety** – Enhanced TypeScript types throughout the codebase for better development experience
+* **Code Cleanup** – Removed deprecated code and unused dependencies for a leaner, faster extension
+
+---
+
 ## Version 0.0.50 – Smarter Discovery & Better Management  
 *(June 2025)*
 
