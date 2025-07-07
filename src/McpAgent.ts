@@ -6,7 +6,7 @@ import {
 	SCOPES,
 } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
-import { AxAgent, AxFunction, ax, f } from "@ax-llm/ax";
+import { AxAgent, AxFunction, ax, f, AxFunctionProcessor } from "@ax-llm/ax";
 import { getReadme, searchMcpServers2 } from "./utilities/repoSearch";
 import { cloudMcpIndexer } from "./utilities/cloudMcpIndexer";
 import { 
@@ -21,7 +21,7 @@ import {
 import { TelemetryEvents } from "./telemetry/types";
 import { outputLogger } from "./utilities/outputLogger";
 
-const getRepoReadme = {
+const getRepoReadme: AxFunction = {
 	func: getReadme,
 	name: "getReadme",
 	description:
@@ -41,6 +41,144 @@ const getRepoReadme = {
 		},
 		required: ["repoOwner", "repoName"],
 	},
+};
+
+// Create specialized agents for composition
+const createQueryGeneratorAgent = (): AxAgent<
+	{ originalUserMessage: string },
+	{ query: string }
+> => {
+	const agent = new AxAgent<
+		{ originalUserMessage: string },
+		{ query: string }
+	>({
+		name: "Query Generator Agent",
+		description: "An AI Agent that generates search queries for finding MCP servers.",
+		signature: `originalUserMessage:string "The original user message that was sent to the agent." -> query:string "A search query that can be used to find relevant MCP server repositories using the GitHub repository search API."`,
+	});
+	
+	agent.setExamples([
+		{
+			originalUserMessage: "Find a MCP server for managing Kubernetes clusters",
+			query: "mcp server kubernetes"
+		},
+		{
+			originalUserMessage: "Search for a MCP server for mysql",
+			query: "mcp server mysql",
+		},
+		{
+			originalUserMessage: "Find a MCP server for managing Docker containers",
+			query: "docker mcp server",
+		},
+		{
+			originalUserMessage: "Search for a MCP server for managing PostgreSQL databases",
+			query: "mcp server postgresql",
+		},
+		{
+			originalUserMessage: "GitHub mcp server",
+			query: "mcp server github"
+		}
+	]);
+	
+	return agent;
+};
+
+const createCloneIdentifierAgent = (): AxAgent<
+	{ nameWithOwner: string },
+	{ clone_required: boolean }
+> => {
+	return new AxAgent<
+		{ nameWithOwner: string },
+		{ clone_required: boolean }
+	>({
+		name: "Clone Identifier Agent",
+		description: "An AI Agent that retrieves a repositories readme from the given nameWithOwner and identifies whether the MCP server must be cloned and built locally to be used.",
+		signature: `"Identifies if the README.md for the given MCP server can be configured without building the code locally." nameWithOwner:string "GitHub repository name with owner" -> clone_required:boolean "Whether the repository must be cloned and built locally to use the MCP server."`,
+		functions: [getRepoReadme],
+	}, { debug: true }
+	);
+};
+
+// Create function processor for managing MCP-related functions
+const createMcpFunctionProcessor = (): AxFunctionProcessor => {
+	const mcpFunctions: AxFunction[] = [
+		{
+			name: "searchMcpServers",
+			description: "Search for MCP server repositories on GitHub",
+			func: async (args: { query: string }) => {
+				const searchResults = await searchMcpServers2({ query: args.query });
+				
+				// Check search results against CloudMCP asynchronously (non-blocking)
+				if (searchResults?.results?.length > 0) {
+					const repositories = searchResults.results.map((result: any) => ({
+						url: result.url,
+						name: result.fullName.split('/')[1] || result.fullName,
+						fullName: result.fullName
+					}));
+					cloudMcpIndexer.checkRepositories(repositories).catch((error: any) => {
+						outputLogger.warn("Failed to check repositories with CloudMCP", error);
+					});
+				}
+				
+				return searchResults;
+			},
+			parameters: {
+				type: "object",
+				properties: {
+					query: { type: "string", description: "Search query" }
+				},
+				required: ["query"]
+			}
+		},
+		getRepoReadme
+	];
+	
+	return new AxFunctionProcessor(mcpFunctions);
+};
+
+// Create MCP installer agent
+const createMcpInstallerAgent = () => {
+	return {
+		name: "McpInstallerAgent",
+		description: "Extracts the VSCode installation configuration for a given MCP server's README on GitHub and adds it to VSCode.",
+		inputSchema: getRepoReadme.parameters,
+		invoke: async (
+			options: vscode.LanguageModelToolInvocationOptions<{
+				repoName: string;
+				repoOwner: string;
+			}>
+		) => {
+			try {
+				// Get README directly using the getReadme function
+				const readme = await getReadme({
+					repoName: options.input.repoName,
+					repoOwner: options.input.repoOwner,
+				});
+				
+				outputLogger.debug("Retrieved README", { length: readme.length });
+				
+				// Extract configuration from README
+				const config = await readmeExtractionRequest(readme);
+				
+				// Open installation URI
+				const cmdResponse = await openMcpInstallUri(config);
+				if (cmdResponse && cmdResponse.uri) {
+					// Log install URI opened with standardized telemetry
+					logChatInstallUriOpened(cmdResponse.uri);
+				}
+				
+				// Return result
+				return new vscode.LanguageModelToolResult([
+					new vscode.LanguageModelTextPart(
+						JSON.stringify(config)
+					),
+				]);
+			} catch (error) {
+				outputLogger.error("MCP installation failed", error as Error);
+				throw error;
+			}
+		},
+	};
 };
 
 export const handler: vscode.ChatRequestHandler = async (
@@ -128,8 +266,11 @@ export const handler: vscode.ChatRequestHandler = async (
 		// Log standardized chat install event
 		logChatInstall(request.prompt, session.account);
 		startPerformanceTimer('chat-install');
-		// Add logic here to handle the install scenario
+		
 		try {
+			// Create an installer agent using composition
+			const mcpInstallerAgent = createMcpInstallerAgent();
+			
 			const llmResponse = sendChatParticipantRequest(
 				request,
 				context,
@@ -143,37 +284,9 @@ export const handler: vscode.ChatRequestHandler = async (
 					tools: [
 						{
 							name: "McpInstallerAgent",
-							description:
-								"Extracts the VSCode installation configuration for a given MCP server's README on GitHub and adds it to VSCode.",
-							inputSchema: getRepoReadme.parameters,
-							invoke: async (
-								options: vscode.LanguageModelToolInvocationOptions<{
-									repoName: string;
-									repoOwner: string;
-								}>
-							) => {
-								const readme = await getReadme({
-									repoName: options.input.repoName,
-									repoOwner: options.input.repoOwner,
-								});
-								console.log("readme: ", readme);
-								const object = await readmeExtractionRequest(
-									readme
-								);
-								const cmdResponse = await openMcpInstallUri(
-									object
-								);
-								if (cmdResponse && cmdResponse.uri) {
-									// Log install URI opened with standardized telemetry
-									logChatInstallUriOpened(cmdResponse.uri);
-								}
-								// Open the URI using VS Code commands
-								return new vscode.LanguageModelToolResult([
-									new vscode.LanguageModelTextPart(
-										JSON.stringify(object)
-									),
-								]);
-							},
+							description: mcpInstallerAgent.description,
+							inputSchema: mcpInstallerAgent.inputSchema,
+							invoke: mcpInstallerAgent.invoke.bind(mcpInstallerAgent),
 						},
 					],
 				},
@@ -189,7 +302,6 @@ export const handler: vscode.ChatRequestHandler = async (
 			});
 			
 			return result;
-			//   console.dir(agentResponse, { depth: null, colors: true });
 		} catch (error) {
 			// Log error with standardized error telemetry
 			logError(error as Error, 'chat-install', {
@@ -217,80 +329,60 @@ export const handler: vscode.ChatRequestHandler = async (
 
 class GitHubSearchTool
 	implements vscode.LanguageModelTool<{ userQuery: string; }> {
+	private functionProcessor: AxFunctionProcessor;
+	private searchCoordinatorAgent: AxAgent<
+		{ originalUserMessage: string },
+		{ relevantRepositoryResults: any[] }
+	>;
+	private cloneIdentifierAgent: AxAgent<
+		{ nameWithOwner: string },
+		{ clone_required: boolean }
+	>;
+	
 	constructor(private readonly userQuery: string, private readonly stream: vscode.ChatResponseStream) {
 		this.userQuery = userQuery;
 		this.stream = stream;
-
+		
+		// Initialize function processor with MCP functions
+		this.functionProcessor = createMcpFunctionProcessor();
+		
+		// Initialize reusable agents
+		this.cloneIdentifierAgent = createCloneIdentifierAgent();
+		
+		// Create the search coordinator agent with composition
+		this.searchCoordinatorAgent = this.createSearchCoordinatorAgent();
 	}
-	async invoke(options: vscode.LanguageModelToolInvocationOptions<{ userQuery: string; }>): Promise<vscode.LanguageModelToolResult> {
-		this.stream.progress("Beginning search for installable MCP servers...");
-		const copilot = CopilotChatProvider.getInstance();
-		const provider = copilot.provider;
-		provider.setOptions({ debug: true, });
-		outputLogger.debug("GitHubSearchTool invoked", { options });
-		// Create a wrapper function that uses the query generator
+	
+	private createSearchCoordinatorAgent(): AxAgent<
+		{ originalUserMessage: string },
+		{ relevantRepositoryResults: any[] }
+	> {
+		// Create query generator agent
+		const queryGeneratorAgent = createQueryGeneratorAgent();
+		
+		// Create the search and process function
 		const generateAndSearchRepos: AxFunction = {
 			name: "generateAndSearchRepos",
 			description: "Generate a search query and search for MCP repositories",
 			func: async (args: { originalUserMessage: string }) => {
-				// First, generate the query
-				const queryGeneratorAgent = new AxAgent<
-					{ originalUserMessage: string },
-					{ query: string }
-				>({
-					name: "Query Generator Agent",
-					description: "An AI Agent that generates search queries for finding MCP servers.",
-					signature: `originalUserMessage:string "The original user message that was sent to the agent." -> query:string "A search query that can be used to find relevant MCP server repositories using the GitHub repository search API."`,
-				});
+				const copilot = CopilotChatProvider.getInstance();
+				const provider = copilot.provider;
 				
-				queryGeneratorAgent.setExamples([
-					{
-						originalUserMessage: "Find a MCP server for managing Kubernetes clusters",
-						query: "mcp server kubernetes"
-					},
-					{
-						originalUserMessage: "Search for a MCP server for mysql",
-						query: "mcp server mysql",
-					},
-					{
-						originalUserMessage: "Find a MCP server for managing Docker containers",
-						query: "docker mcp server",
-					},
-					{
-						originalUserMessage: "Search for a MCP server for managing PostgreSQL databases",
-						query: "mcp server postgresql",
-					},
-					{
-						originalUserMessage: "GitHub mcp server",
-						query: "mcp server github"
-					}
-				]);
-				
+				// Use the query generator agent
 				const queryResult = await queryGeneratorAgent.forward(
 					provider,
 					{ originalUserMessage: args.originalUserMessage },
 					{ stream: false }
 				);
 				
-				// Then use the generated query to search
-				const searchResults = await searchMcpServers2({ 
-					query: queryResult.query,
-					// nextPageCursor: ""
+				// Execute the search using the function processor
+				const searchResult = await this.functionProcessor.execute({
+					id: "search-" + Date.now(),
+					name: "searchMcpServers",
+					args: JSON.stringify({ query: queryResult.query })
 				});
 				
-				// Check search results against CloudMCP asynchronously (non-blocking)
-				if (searchResults?.results?.length > 0) {
-					const repositories = searchResults.results.map((result: any) => ({
-						url: result.url,
-						name: result.fullName.split('/')[1] || result.fullName,
-						fullName: result.fullName
-					}));
-					cloudMcpIndexer.checkRepositories(repositories).catch((error: any) => {
-						outputLogger.warn("Failed to check repositories with CloudMCP", error);
-					});
-				}
-				
-				return searchResults;
+				return JSON.parse(searchResult);
 			},
 			parameters: {
 				type: "object",
@@ -303,85 +395,98 @@ class GitHubSearchTool
 				required: ["originalUserMessage"]
 			}
 		};
-		const clone_identifier_agent = new AxAgent<
-			{ nameWithOwner: string },
-			{ clone_required: boolean }
-		>({
-			name: "Clone Identifier Agent",
-			description: "An AI Agent that retrieves a repositories readme from the given nameWithOwner and identifies whether the MCP server must be cloned and built locally to be used.",
-			signature: `"Identifies if the README.md for the given MCP server can be configured without building the code locally." nameWithOwner:string "GitHub repository name with owner" -> clone_required:boolean "Whether the repository must be cloned and built locally to use the MCP server."`,
-			functions: [getRepoReadme],
-		}, { debug: true }
-		);
-		const primaryAgent = new AxAgent<
+		
+		// Create the coordinator agent with composition
+		return new AxAgent<
 			{ originalUserMessage: string },
 			{ relevantRepositoryResults: any[] }
 		>({
 			name: "Search Coordinator Agent",
-			description:
-				"An AI Agent that coordinates the search for MCP servers using the Query Generator agent + GitHub search tool.",
+			description: "An AI Agent that coordinates the search for MCP servers using composed agents and functions.",
 			signature: `originalUserMessage:string "The original user message that was sent to the agent." -> relevantRepositoryResults:json[] "An array of repository results. Include all information in the response."`,
-			functions: [generateAndSearchRepos],
+			functions: [generateAndSearchRepos]
+			// Note: agents composition requires matching input/output types
 		});
-
-		const repositoryResponse = await primaryAgent.forward(
-			provider,
-			{ originalUserMessage: this.userQuery },
-			{ stream: false, modelConfig: { maxTokens: 111452, }, }
-		);
-		this.stream.progress("Processing search results...");
-		outputLogger.debug("Query Response", { results: repositoryResponse.relevantRepositoryResults });
-		if (repositoryResponse.relevantRepositoryResults.length === 0) {
-			return new vscode.LanguageModelToolResult([
-				new vscode.LanguageModelTextPart(
-					"No relevant MCP server repositories found for your query."
-				),
-			]);
-		}
-		const installableRepositories = [];
-		for (const repo of repositoryResponse.relevantRepositoryResults) {
-			const cloneRequired = await clone_identifier_agent.forward(
-				provider,
-				{ nameWithOwner: (repo as any).fullName },
-				{ stream: false }
-			);
-			if (!cloneRequired.clone_required) {
-				installableRepositories.push(repo);
-			}
-		}
-		outputLogger.debug("Installable Repositories", { count: installableRepositories.length, repositories: installableRepositories });
-		if (installableRepositories.length === 0) {
-			return new vscode.LanguageModelToolResult([
-				new vscode.LanguageModelTextPart(
-					"No installable MCP server repositories found for your query."
-				),
-			]);
-		}
-		// Return the results as a LanguageModelToolResult
-		// Convert the results to LanguageModelTextPart
-		const results = installableRepositories.map(
-			(result) =>
-				new vscode.LanguageModelTextPart(
-					JSON.stringify(result)
-				)
-		);
-		// Return the results as a LanguageModelToolResult
-		return new vscode.LanguageModelToolResult(results);
 	}
+	
+	async invoke(options: vscode.LanguageModelToolInvocationOptions<{ userQuery: string; }>): Promise<vscode.LanguageModelToolResult> {
+		this.stream.progress("Beginning search for installable MCP servers...");
+		const copilot = CopilotChatProvider.getInstance();
+		const provider = copilot.provider;
+		provider.setOptions({ debug: true });
+		outputLogger.debug("GitHubSearchTool invoked", { options });
+		
+		try {
+			// Use the composed search coordinator agent
+			const repositoryResponse = await this.searchCoordinatorAgent.forward(
+				provider,
+				{ originalUserMessage: this.userQuery },
+				{ 
+					stream: false, 
+					modelConfig: { maxTokens: 111452 }
+				}
+			);
+			
+			this.stream.progress("Processing search results...");
+			outputLogger.debug("Query Response", { results: repositoryResponse.relevantRepositoryResults });
+			
+			if (!repositoryResponse.relevantRepositoryResults || repositoryResponse.relevantRepositoryResults.length === 0) {
+				return new vscode.LanguageModelToolResult([
+					new vscode.LanguageModelTextPart(
+						"No relevant MCP server repositories found for your query."
+					),
+				]);
+			}
+			
+			// Filter for installable repositories
+			const installableRepositories = [];
+			for (const repo of repositoryResponse.relevantRepositoryResults) {
+				const cloneRequired = await this.cloneIdentifierAgent.forward(
+					provider,
+					{ nameWithOwner: (repo as any).fullName },
+					{ stream: false }
+				);
+				if (!cloneRequired.clone_required) {
+					installableRepositories.push(repo);
+				}
+			}
+			
+			outputLogger.debug("Installable Repositories", { 
+				count: installableRepositories.length, 
+				repositories: installableRepositories 
+			});
+			
+			if (installableRepositories.length === 0) {
+				return new vscode.LanguageModelToolResult([
+					new vscode.LanguageModelTextPart(
+						"No installable MCP server repositories found for your query."
+					),
+				]);
+			}
+			
+			// Return the results as a LanguageModelToolResult
+			const results = installableRepositories.map(
+				(result) => new vscode.LanguageModelTextPart(JSON.stringify(result))
+			);
+			
+			return new vscode.LanguageModelToolResult(results);
+		} catch (error) {
+			outputLogger.error("Search failed", error as Error);
+			throw error;
+		}
+	}
+	
 	public name: string = "github_search_agent";
-	public description: string =
-		"Tool to search repositories using the GitHub API.";
-	public inputSchema: vscode.LanguageModelToolInformation["inputSchema"] =
-		{
-			type: "object",
-			properties: {
-				userQuery: {
-					type: "string",
-					description:
-						"A search query to find relevant MCP server repositories on GitHub.",
-				},
+	public description: string = "Tool to search repositories using the GitHub API.";
+	public inputSchema: vscode.LanguageModelToolInformation["inputSchema"] = {
+		type: "object",
+		properties: {
+			userQuery: {
+				type: "string",
+				description: "A search query to find relevant MCP server repositories on GitHub.",
 			},
-		};
+		},
+	};
 }
 
 export async function readmeExtractionRequest(readme: string) {
