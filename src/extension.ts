@@ -10,28 +10,67 @@ import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
 import { handler } from "./McpAgent";
 import { cloudMcpIndexer } from "./utilities/cloudMcpIndexer";
+import { outputLogger, LogLevel } from "./utilities/outputLogger";
 const connectionString =
 	"InstrumentationKey=2c71cf43-4cb2-4e25-97c9-bd72614a9fe8;IngestionEndpoint=https://westus2-2.in.applicationinsights.azure.com/;LiveEndpoint=https://westus2.livediagnostics.monitor.azure.com/;ApplicationId=862c3c9c-392a-4a12-8475-5c9ebeff7aaf";
 const telemetryReporter = new TelemetryReporter(connectionString);
 
+// Helper function to convert string to LogLevel enum
+function getLogLevelFromString(level: string): LogLevel {
+	switch (level.toLowerCase()) {
+		case 'debug': return LogLevel.DEBUG;
+		case 'info': return LogLevel.INFO;
+		case 'warn': return LogLevel.WARN;
+		case 'error': return LogLevel.ERROR;
+		case 'none': return LogLevel.NONE;
+		default: return LogLevel.INFO;
+	}
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
+	// Initialize output logger with configuration
+	const config = vscode.workspace.getConfiguration('copilotMcp');
+	const logLevelConfig = config.get<string>('logLevel', 'info');
+	const logLevel = getLogLevelFromString(logLevelConfig);
+	outputLogger.setLogLevel(logLevel);
+	
+	// Watch for configuration changes
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('copilotMcp.logLevel')) {
+				const newLogLevel = vscode.workspace.getConfiguration('copilotMcp').get<string>('logLevel', 'info');
+				outputLogger.setLogLevel(getLogLevelFromString(newLogLevel));
+				outputLogger.info(`Log level changed to: ${newLogLevel}`);
+			}
+		})
+	);
+	
+	context.subscriptions.push({ dispose: () => outputLogger.dispose() });
+	outputLogger.info("Copilot MCP extension activation started");
+
 	const Octokit = await import("@octokit/rest");
 	context.subscriptions.push(logger, { dispose: shutdownLogs });
 	context.subscriptions.push(telemetryReporter);
 	// console.dir(await vscode.authentication.getAccounts('github'), {depth: null});
+	outputLogger.debug("Getting GitHub authentication session");
 	const session = await vscode.authentication.getSession(
 		GITHUB_AUTH_PROVIDER_ID,
 		SCOPES,
 		{ createIfNone: true }
 	);
-	const octokit = new Octokit.Octokit({
-		auth: session.accessToken,
-	});
-	console.log("Initializing Copilot Provider");
+	outputLogger.info("GitHub session obtained", { userId: session.account.id });
+	
+	// Octokit instance created but not used in this activation function
+	// const octokit = new Octokit.Octokit({
+	// 	auth: session.accessToken,
+	// });
+	
+	outputLogger.info("Initializing Copilot Provider");
 	const copilot = await CopilotChatProvider.initialize(context);
 	const models = await copilot.getModels();
+	outputLogger.debug("Available Copilot models", models.map((m: any) => m.id));
 	
 	// Initialize standardized telemetry context  
 	const extensionVersion = vscode.extensions.getExtension('AutomataLabs.copilot-mcp')?.packageJSON?.version || 'unknown';
@@ -39,13 +78,17 @@ export async function activate(context: vscode.ExtensionContext) {
 	setCommonLogAttributes({ ...session.account });
 	
 	// Initialize CloudMCP indexer
+	outputLogger.info("Initializing CloudMCP indexer");
 	cloudMcpIndexer.initialize(context);
 	
 	// Log extension activation with new standardized telemetry
 	logExtensionActivate(vscode.env.isNewAppInstall);
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "copilot-mcp" is now active!');
+	outputLogger.info('Copilot MCP extension is now active!', { 
+		version: extensionVersion,
+		isNewInstall: vscode.env.isNewAppInstall 
+	});
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
@@ -60,8 +103,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	context.subscriptions.push(disposable);
+	const showLogsCommand = vscode.commands.registerCommand(
+		"copilot-mcp.showLogs",
+		() => {
+			outputLogger.show();
+		}
+	);
 
+	context.subscriptions.push(disposable, showLogsCommand);
+
+	outputLogger.debug("Creating CopilotMcpViewProvider");
 	const provider = new CopilotMcpViewProvider(
 		context.extensionUri,
 		session.accessToken,
@@ -74,12 +125,15 @@ export async function activate(context: vscode.ExtensionContext) {
 			provider
 		)
 	);
+	outputLogger.info("Webview provider registered");
 
 	// Register the chat participant and its request handler
+	outputLogger.debug("Registering MCP chat participant");
 	const mcpChatAgent = vscode.chat.createChatParticipant(
 		"copilot.mcp-agent",
 		handler
 	);
+	outputLogger.info("MCP chat participant registered");
 
 	// Optionally, set some properties for @cat
 	mcpChatAgent.iconPath = vscode.Uri.joinPath(
@@ -121,7 +175,7 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 		// Persist that we've shown the notes for this version so we don't show again
 		await context.globalState.update(storageKey, currentVersion);
 	} catch (error) {
-		console.error("Failed to display What's New information:", error);
+		outputLogger.error("Failed to display What's New information", error as Error);
 		// Log error with standardized telemetry
 		logError(error as Error, 'whats-new-display', {
 			currentVersion,
@@ -132,6 +186,7 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated
 export function deactivate() {
+	outputLogger.info("Copilot MCP extension deactivating");
 	// Log extension deactivation
 	logEvent({
 		name: TelemetryEvents.EXTENSION_DEACTIVATE,

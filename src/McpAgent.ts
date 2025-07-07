@@ -19,6 +19,7 @@ import {
 	endPerformanceTimer
 } from "./telemetry/standardizedTelemetry";
 import { TelemetryEvents } from "./telemetry/types";
+import { outputLogger } from "./utilities/outputLogger";
 
 const getRepoReadme = {
 	func: getReadme,
@@ -48,6 +49,11 @@ export const handler: vscode.ChatRequestHandler = async (
 	stream: vscode.ChatResponseStream,
 	token: vscode.CancellationToken
 ): Promise<any> => {
+	outputLogger.debug("MCP Agent handler invoked", { 
+		command: request.command, 
+		prompt: request.prompt 
+	});
+	
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
 	provider.setOptions({ debug: true });
@@ -59,6 +65,7 @@ export const handler: vscode.ChatRequestHandler = async (
 	);
 
 	if (request.command === "search") {
+		outputLogger.info("Processing search command", { query: request.prompt });
 		// Log standardized chat search event
 		logChatSearch(request.prompt, session.account);
 		startPerformanceTimer('chat-search');
@@ -113,9 +120,11 @@ export const handler: vscode.ChatRequestHandler = async (
 				queryLength: request.prompt.length,
 			});
 			
+			outputLogger.error("Search command failed", error as Error);
 			console.dir(error, { depth: null, colors: true });
 		}
 	} else if (request.command === "install") {
+		outputLogger.info("Processing install command", { query: request.prompt });
 		// Log standardized chat install event
 		logChatInstall(request.prompt, session.account);
 		startPerformanceTimer('chat-install');
@@ -196,9 +205,11 @@ export const handler: vscode.ChatRequestHandler = async (
 				queryLength: request.prompt.length,
 			});
 			
+			outputLogger.error("Install command failed", error as Error);
 			console.dir(error, { depth: null, colors: true });
 		}
 	} else {
+		outputLogger.warn("Unknown command received", { command: request.command });
 		// Log unknown intent with standardized telemetry
 		logChatUnknownIntent(request.command || 'unknown');
 	}
@@ -216,7 +227,7 @@ class GitHubSearchTool
 		const copilot = CopilotChatProvider.getInstance();
 		const provider = copilot.provider;
 		provider.setOptions({ debug: true, });
-		console.log("options: ", options);
+		outputLogger.debug("GitHubSearchTool invoked", { options });
 		// Create a wrapper function that uses the query generator
 		const generateAndSearchRepos: AxFunction = {
 			name: "generateAndSearchRepos",
@@ -275,7 +286,7 @@ class GitHubSearchTool
 						fullName: result.fullName
 					}));
 					cloudMcpIndexer.checkRepositories(repositories).catch((error: any) => {
-						console.warn("Failed to check repositories with CloudMCP:", error);
+						outputLogger.warn("Failed to check repositories with CloudMCP", error);
 					});
 				}
 				
@@ -319,7 +330,7 @@ class GitHubSearchTool
 			{ stream: false, modelConfig: { maxTokens: 111452, }, }
 		);
 		this.stream.progress("Processing search results...");
-		console.debug("Query Response: ", repositoryResponse.relevantRepositoryResults);
+		outputLogger.debug("Query Response", { results: repositoryResponse.relevantRepositoryResults });
 		if (repositoryResponse.relevantRepositoryResults.length === 0) {
 			return new vscode.LanguageModelToolResult([
 				new vscode.LanguageModelTextPart(
@@ -338,7 +349,7 @@ class GitHubSearchTool
 				installableRepositories.push(repo);
 			}
 		}
-		console.debug("Installable Repositories: ", installableRepositories);
+		outputLogger.debug("Installable Repositories", { count: installableRepositories.length, repositories: installableRepositories });
 		if (installableRepositories.length === 0) {
 			return new vscode.LanguageModelToolResult([
 				new vscode.LanguageModelTextPart(

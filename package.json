@@ -106,6 +106,11 @@
       {
         "command": "copilot-mcp.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "copilot-mcp.showLogs",
+        "title": "Show Copilot MCP Logs",
+        "category": "Copilot MCP"
       }
     ],
     "viewsContainers": {
@@ -126,6 +131,17 @@
           "icon": "resources/light/server.svg"
         }
       ]
+    },
+    "configuration": {
+      "title": "Copilot MCP",
+      "properties": {
+        "copilotMcp.logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error", "none"],
+          "default": "info",
+          "description": "Set the logging level for the Copilot MCP extension output channel"
+        }
+      }
     }
   },
   "scripts": {

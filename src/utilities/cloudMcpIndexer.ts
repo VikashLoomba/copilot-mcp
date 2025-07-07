@@ -2,6 +2,7 @@ import type { ExtensionContext } from "vscode";
 import { logEvent, logError } from "../telemetry/standardizedTelemetry";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./const";
 import { f, ax, AxGenerateError } from '@ax-llm/ax';
+import { outputLogger } from "./outputLogger";
 
 export interface CloudMcpIndexResult {
   success: boolean;
@@ -140,7 +141,7 @@ export class CloudMcpIndexer {
     // Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && this.isCacheValid(cached.timestamp)) {
-      console.log(`[CloudMCP] Returning cached result for ${repo.name}`);
+      outputLogger.debug(`[CloudMCP] Returning cached result for ${repo.name}`);
       return cached.result;
     }
 
@@ -184,7 +185,7 @@ export class CloudMcpIndexer {
       }
       
       // Repository not found in CloudMCP, attempt to index it
-      console.log(`[CloudMCP] No existing server found for ${repo.name}, will need to index`);
+      outputLogger.debug(`[CloudMCP] No existing server found for ${repo.name}, will need to index`);
       
       const indexResult = await this.sendIndexRequest({
         repositoryUrl: repo.url,
@@ -221,7 +222,7 @@ export class CloudMcpIndexer {
         return result;
       }
     } catch (error) {
-      console.error(`Error checking repository ${repo.name}:`, error);
+      outputLogger.error(`Error checking repository ${repo.name}`, error as Error);
       return {
         success: false,
         exists: false,
@@ -251,7 +252,7 @@ export class CloudMcpIndexer {
       });
 
       if (!response.ok) {
-        console.warn(`CloudMCP search failed: ${response.status} ${response.statusText}`);
+        outputLogger.warn(`CloudMCP search failed: ${response.status} ${response.statusText}`);
         return null;
       }
 
@@ -267,7 +268,7 @@ export class CloudMcpIndexer {
 
       return null;
     } catch (error) {
-      console.error("Error searching CloudMCP:", error);
+      outputLogger.error("Error searching CloudMCP", error as Error);
       return null;
     }
   }
@@ -511,7 +512,7 @@ export class CloudMcpIndexer {
             });
           }
         } else {
-          console.log(`[CloudMCP] No existing server found for ${repo.name}, will need to index`);
+          outputLogger.debug(`[CloudMCP] No existing server found for ${repo.name}, will need to index`);
           
           // Attempt to index this repository
           const indexResult = await this.sendIndexRequest({
@@ -557,7 +558,7 @@ export class CloudMcpIndexer {
           }
         }
       } catch (error) {
-        console.error(`Error checking repository ${repo.name}:`, error);
+        outputLogger.error(`Error checking repository ${repo.name}`, error as Error);
         resultsMap.set(repo.url, {
           success: false,
           exists: false,
@@ -593,7 +594,7 @@ export class CloudMcpIndexer {
       const preExtractedDetails = await extractServerDetails(githubToken, request.repositoryUrl);
       
       if ('success' in preExtractedDetails && preExtractedDetails.success === false) {
-        console.log("Error extracting server details", preExtractedDetails.error);
+        outputLogger.error("Error extracting server details", new Error(preExtractedDetails.error));
         return {
           success: false,
           error: preExtractedDetails.error,
@@ -601,7 +602,7 @@ export class CloudMcpIndexer {
         };
       }
 
-      console.dir(preExtractedDetails, { depth: null, colors: true });
+      outputLogger.debug("Pre-extracted server details", preExtractedDetails);
 
       const response = await fetch(`${this.baseUrl}/api/mcp/import-oss`, {
         method: "POST",
@@ -619,7 +620,7 @@ export class CloudMcpIndexer {
       const data = await response.json(); 
       if (response.ok) {
         
-        console.debug("Successfully sent index request to CloudMCP", data);
+        outputLogger.debug("Successfully sent index request to CloudMCP", data);
         return {
           success: true,
           message: "Server published successfully",
@@ -640,20 +641,21 @@ export class CloudMcpIndexer {
           };
         }
 
-        console.warn("[sendIndexRequest]Failed to send index request to CloudMCP", {
+        outputLogger.warn("[sendIndexRequest]Failed to send index request to CloudMCP", {
           status: response.status,
           statusText: response.statusText,
-          error: 'error' in data ? data.error : undefined
+          error: 'error' in data ? data.error : undefined,
+          endpoint: response.url
         });
         
         return {
           success: false,
-          error: await response.text() || `HTTP ${response.status}`,
+          error: 'error' in data ? data.error : `HTTP ${response.status}`,
           serverName: request.serverName
         };
       }
     } catch (error) {
-      console.debug("Error sending index request to CloudMCP", error);
+      outputLogger.error("Error sending index request to CloudMCP", error as Error);
       logError(error as Error, "cloudMcpIndexer.sendIndexRequest");
       return {
         success: false,
@@ -673,7 +675,7 @@ export class CloudMcpIndexer {
       const session = await vscode.authentication.getSession(GITHUB_AUTH_PROVIDER_ID, SCOPES, { createIfNone: false });
       return session?.accessToken;
     } catch (error) {
-      console.warn("Could not get GitHub token for CloudMCP indexing", error);
+      outputLogger.warn("Could not get GitHub token for CloudMCP indexing", error as Error);
       return undefined;
     }
   }
