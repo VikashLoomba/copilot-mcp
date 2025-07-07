@@ -12,7 +12,7 @@
   },
   "displayName": "Copilot MCP",
   "description": "VSCode extension that allows you to search, manage, and install open-source MCP servers",
-  "version": "0.0.58",
+  "version": "0.0.59",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.101.0"
@@ -137,7 +137,13 @@
       "properties": {
         "copilotMcp.logLevel": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error", "none"],
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "none"
+          ],
           "default": "info",
           "description": "Set the logging level for the Copilot MCP extension output channel"
         }
