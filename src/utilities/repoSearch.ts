@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./const";
 // Define interfaces for better type safety and clarity
@@ -32,7 +31,7 @@ export interface SearchMcpServersResponse {
 	totalCount: number;
 	hasMore: boolean;
 }
-
+import * as vscode from "vscode";
 export async function searchMcpServers(
 	params: SearchMcpServersParams
 ): Promise<any | undefined> {

@@ -44,7 +44,7 @@ const getRepoReadme: AxFunction = {
 };
 
 // Create specialized agents for composition
-const createQueryGeneratorAgent = (): AxAgent<
+export const createQueryGeneratorAgent = (): AxAgent<
 	{ originalUserMessage: string },
 	{ query: string }
 > => {
@@ -493,25 +493,6 @@ export async function readmeExtractionRequest(readme: string) {
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
 	provider.setOptions({ debug: false });
-	const commandIdentifierAgent = new AxAgent<
-		{ readme: string },
-		{ available_command_types: string[]; requires_clone: boolean }
-	>({
-		name: "Command Identifier Agent",
-		description: "An AI Agent that identifies the types of commands the MCP server configuration can use and whether the repository must be cloned locally to use the MCP server.",
-		signature: `"Identify the type of command used to start the MCP server. The command should be a string that can be used to start the MCP server." readme:string "MCP server readme with instructions" -> requires_clone:boolean "Whether the repository must be cloned locally to use the MCP server.", available_command_types?:class[] "npx, docker, uvx, bunx" "Available command types that can be used for the MCP server configuration."`,
-	}
-	);
-	const commandIdentifierResponse = await commandIdentifierAgent.forward(
-		provider,
-		{ readme },
-		{ stream: false }
-	);
-	console.log(
-		"Command Identifier Response: ",
-		commandIdentifierResponse.available_command_types,
-		commandIdentifierResponse.requires_clone
-	);
 
 	const gen = ax`
 		readme:${f.string('MCP server readme with instructions')} ->
@@ -521,7 +502,7 @@ export async function readmeExtractionRequest(readme: string) {
 		env:${f.json('Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths.')},
 		inputs:${f.array(f.json('All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources.'))}
 	`;
-	gen.setExamples(dspyExamples);
+	gen.setExamples(await dspyExamples());
 
 	const object = await gen.forward(
 		provider,
