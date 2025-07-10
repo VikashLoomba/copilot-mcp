@@ -156,7 +156,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					repoOwner: owner.login,
 					repoName: name,
 				});
-				console.log("readmeContent", readmeContent);
+
 				return { readme: readmeContent, fullName };
 			} catch (e) {
 				console.error("Error getting readme", e);
@@ -189,7 +189,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				
 				// Check if we have CloudMCP details with install configuration
 				if (payload.cloudMcpDetails && payload.cloudMcpDetails.success && payload.cloudMcpDetails.installConfig) {
-					console.log("Using CloudMCP installation configuration");
+					console.log("Using CloudMCP installation configuration", payload);
 					
 					// Use the installConfig directly - it's already in the right format
 					const installConfig = payload.cloudMcpDetails.installConfig;

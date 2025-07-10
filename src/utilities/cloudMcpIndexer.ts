@@ -146,6 +146,14 @@ export class CloudMcpIndexer {
     }
 
     try {
+      // Always attempt to index/update the repository
+      outputLogger.debug(`[CloudMCP] Sending index request for ${repo.name}`);
+      
+      const indexResult = await this.sendIndexRequest({
+        repositoryUrl: repo.url,
+        serverName: repo.name
+      });
+      
       // Check if repository is already indexed in CloudMCP
       const cloudMcpServer = await this.searchRepository(repo.url);
       
@@ -184,14 +192,7 @@ export class CloudMcpIndexer {
         }
       }
       
-      // Repository not found in CloudMCP, attempt to index it
-      outputLogger.debug(`[CloudMCP] No existing server found for ${repo.name}, will need to index`);
-      
-      const indexResult = await this.sendIndexRequest({
-        repositoryUrl: repo.url,
-        serverName: repo.name
-      });
-      
+      // If indexing succeeded but no server found in search, use the extracted details
       if (indexResult.success && indexResult.details) {
         const installConfig = this.createInstallConfigFromExtractedDetails(repo.name, indexResult.details);
         
@@ -399,8 +400,8 @@ export class CloudMcpIndexer {
 
     const pkg = packages[0];
     const installConfig: InstallConfig = {
-      name: serverName,
-      command: this.getCommandFromRegistry(pkg.registry_name || 'npm'),
+      name: pkg.name || serverName,
+      command: pkg.runtime_hint ? pkg.runtime_hint : this.getCommandFromRegistry(pkg.registry_name || 'npm'),
       args: [],
       env: {},
       inputs: []
@@ -414,7 +415,7 @@ export class CloudMcpIndexer {
     // Process runtime arguments if available
     if (pkg.runtime_arguments && Array.isArray(pkg.runtime_arguments)) {
       for (const arg of pkg.runtime_arguments) {
-        if (arg.value) {
+        if (arg.value && !installConfig.args.includes(arg.value) && arg.is_required && !installConfig.args[0].includes(arg.value)) {
           installConfig.args.push(arg.value);
         }
       }
@@ -423,7 +424,7 @@ export class CloudMcpIndexer {
     // Process package arguments if available
     if (pkg.package_arguments && Array.isArray(pkg.package_arguments)) {
       for (const arg of pkg.package_arguments) {
-        if (arg.value) {
+        if (arg.value && !installConfig.args.includes(arg.value) && arg.is_required && !installConfig.args[0].includes(arg.value)) {
           installConfig.args.push(arg.value);
         }
       }
@@ -480,6 +481,15 @@ export class CloudMcpIndexer {
     
     for (const repo of repositories) {
       try {
+        // Always attempt to index/update the repository
+        outputLogger.debug(`[CloudMCP] Sending index request for ${repo.name}`);
+        
+        const indexResult = await this.sendIndexRequest({
+          repositoryUrl: repo.url,
+          serverName: repo.name
+        });
+        
+        // Check if repository is already indexed in CloudMCP
         const cloudMcpServer = await this.searchRepository(repo.url);
         
         if (cloudMcpServer && cloudMcpServer.packages && cloudMcpServer.packages.length > 0) {
@@ -511,50 +521,37 @@ export class CloudMcpIndexer {
               }
             });
           }
-        } else {
-          outputLogger.debug(`[CloudMCP] No existing server found for ${repo.name}, will need to index`);
-          
-          // Attempt to index this repository
-          const indexResult = await this.sendIndexRequest({
-            repositoryUrl: repo.url,
-            serverName: repo.name
+        } else if (indexResult.success && indexResult.details) {
+          // If indexing succeeded but no server found in search, use the extracted details
+          const installConfig = this.createInstallConfigFromExtractedDetails(repo.name, indexResult.details);
+
+          resultsMap.set(repo.url, {
+            success: true,
+            exists: false,
+            installConfig
           });
           
-          if (indexResult.success && indexResult.details) {
-            // The indexResult.details contains the extracted package info
-            // Since we extracted it ourselves, it should be in a simple format
-            // For now, we'll create a minimal InstallConfig
-            // In the future, we should return CloudMcpPackage format from extractServerDetails
-            const installConfig = this.createInstallConfigFromExtractedDetails(repo.name, indexResult.details);
-
-            resultsMap.set(repo.url, {
+          if (repo.fullName) {
+            resultsMap.set(repo.fullName, {
               success: true,
               exists: false,
               installConfig
             });
-            
-            if (repo.fullName) {
-              resultsMap.set(repo.fullName, {
-                success: true,
-                exists: false,
-                installConfig
-              });
-            }
-          } else {
-            // Failed to index
-            resultsMap.set(repo.url, {
+          }
+        } else {
+          // Failed to index
+          resultsMap.set(repo.url, {
+            success: false,
+            exists: false,
+            error: indexResult.error
+          });
+          
+          if (repo.fullName) {
+            resultsMap.set(repo.fullName, {
               success: false,
               exists: false,
               error: indexResult.error
             });
-            
-            if (repo.fullName) {
-              resultsMap.set(repo.fullName, {
-                success: false,
-                exists: false,
-                error: indexResult.error
-              });
-            }
           }
         }
       } catch (error) {
@@ -592,7 +589,7 @@ export class CloudMcpIndexer {
       }
 
       const preExtractedDetails = await extractServerDetails(githubToken, request.repositoryUrl);
-      
+       outputLogger.debug("Pre-extracted server details", preExtractedDetails);
       if ('success' in preExtractedDetails && preExtractedDetails.success === false) {
         outputLogger.error("Error extracting server details", new Error(preExtractedDetails.error));
         return {
@@ -602,7 +599,6 @@ export class CloudMcpIndexer {
         };
       }
 
-      outputLogger.debug("Pre-extracted server details", preExtractedDetails);
 
       // Extract owner and repo from URL
       const githubUrlPattern = /^https:\/\/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/)?$/;
@@ -709,13 +705,15 @@ import { CopilotChatProvider } from "./CopilotChat";
 export const extractServerDetails = async (accessToken: string, repositoryUrl: string) => {
     // Initialize Octokit with the access token
     const { Octokit } = await import('@octokit/rest');
+    console.log("Have token? ", accessToken);
+    console.log("Repository URL: ", repositoryUrl);
     const octokit = new Octokit({
-        auth: accessToken
+        auth: accessToken,
     });
 
     // Parse the repository URL to get owner and repo
     const [owner, repo] = repositoryUrl.split('/').slice(-2);
-
+    console.log("Parsed owner and repo: ", owner, repo);
     // First, fetch the readme.md file of the repository
     try {
       const response = await octokit.repos.getReadme({
