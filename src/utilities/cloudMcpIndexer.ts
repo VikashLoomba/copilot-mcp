@@ -604,6 +604,21 @@ export class CloudMcpIndexer {
 
       outputLogger.debug("Pre-extracted server details", preExtractedDetails);
 
+      // Extract owner and repo from URL
+      const githubUrlPattern = /^https:\/\/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/)?$/;
+      const match = request.repositoryUrl.match(githubUrlPattern);
+      
+      if (!match) {
+        return {
+          success: false,
+          error: "Invalid GitHub URL format",
+          serverName: request.serverName
+        };
+      }
+      
+      const owner = match[1];
+      const repo = match[2];
+
       const response = await fetch(`${this.baseUrl}/api/mcp/import-oss`, {
         method: "POST",
         headers: {
@@ -613,6 +628,8 @@ export class CloudMcpIndexer {
         body: JSON.stringify({
           repository_url: request.repositoryUrl,
           packages: preExtractedDetails,
+          owner: owner,
+          repository: repo
         })
       });
 
