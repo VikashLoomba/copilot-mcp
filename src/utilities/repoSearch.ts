@@ -107,36 +107,282 @@ export async function searchMcpServers(
 		} as any;
 	}
 }
+// interface searchWithReadme {
+// 	query: string;
+// 	endCursor?: string;
+// }
+// export async function searchMcpServers2(payload: searchWithReadme) {
+// 	const modifiedQuery = `"mcp" in:name,description,topics "${payload.query}" in:name,description`;
+// 	const graphQLOperation = `
+//     query SearchRepositories($userQuery: String!, $endCursor: String ) {
+//         search(query: $userQuery, type: REPOSITORY, first: 10, after: $endCursor ) {
+//             repositoryCount
+//             edges {
+//                 node {
+//                     ... on Repository {
+// 						updatedAt
+// 						stargazerCount
+// 						owner {
+// 							login
+// 							url
+// 							avatarUrl
+// 						}
+//                         nameWithOwner
+//                         description
+//                         url
+//                         readme: object(expression: "HEAD:README.md") {
+//                             ... on Blob {
+//                                 text
+//                         }
+//                 }
+//             }
+//         }
+//     }
+//     pageInfo {
+//       endCursor
+//       hasNextPage
+// 	  hasPreviousPage
+// 	  startCursor
+//     }
+//   }
+// }
+//   `;
+
+// 	try {
+// 		const session = await vscode.authentication.getSession(
+// 			GITHUB_AUTH_PROVIDER_ID,
+// 			SCOPES
+// 		);
+// 		const { graphql } = await import("@octokit/graphql");
+// 		// 3. Execute the GraphQL operation, passing the 'gitHubSearchSyntaxQuery'
+// 		//    as the value for '$searchQueryVariable'.
+// 		const response: any = await graphql(
+// 			// Assuming 'graphql' is your client function
+// 			graphQLOperation,
+// 			{
+// 				userQuery: modifiedQuery, // Pass the constructed string as the variable
+// 				endCursor: payload.endCursor ?? null,
+// 				headers: {
+// 					Authorization: `Bearer ${session?.accessToken}`,
+// 				},
+// 			}
+// 		);
+// 		// console.dir(response, { depth: null, colors: true });
+// 		if (response.search.edges.length === 0) {
+// 			// throw new Error('No results found'); // Uncomment if you want this behavior
+// 			console.log("No results found for your query.");
+// 		}
+// 		return {
+// 			results: response.search.edges.map((edge: any) => {
+// 				const repo = edge.node;
+// 				return {
+// 					fullName: repo.nameWithOwner,
+// 					stars: repo.stargazerCount,
+// 					author: {
+// 						name: repo.owner.login,
+// 						profileUrl: repo.owner.url,
+// 						avatarUrl: repo.owner.avatarUrl,
+// 					},
+// 					updatedAt: repo.updatedAt,
+// 					description: repo.description,
+// 					url: repo.url,
+// 					readme: repo.readme ? repo.readme.text : null, // Handle readme text
+// 				};
+// 			}),
+// 			totalCount: response.search.repositoryCount,
+// 			pageInfo: response.search.pageInfo,
+// 		};
+// 	} catch (error: any) {
+// 		console.error(
+// 			`Error searching repositories with user query "${payload.query}":`
+// 		);
+// 		// @octokit/graphql errors often have a 'response.errors' array
+// 		if (error.response && error.response.errors) {
+// 			error.response.errors.forEach((err: any) =>
+// 				console.error(`- ${err.message}`)
+// 			);
+// 		} else {
+// 			console.error(error);
+// 		}
+// 		throw error; // Re-throw if you want to handle it further up the call stack
+// 	}
+// }
+// interface searchWithReadme {
+// 	query: string;
+// 	endCursor?: string;
+// }
+
+// export async function searchMcpServers2(payload: searchWithReadme) {
+// 	const modifiedQuery = `"mcp" in:name,description,topics "${payload.query}" in:name,description`;
+// 	const graphQLOperation = `
+//     query SearchRepositories($userQuery: String!, $endCursor: String ) {
+//         search(query: $userQuery, type: REPOSITORY, first: 10, after: $endCursor ) {
+//             repositoryCount
+//             edges {
+//                 node {
+//                     ... on Repository {
+// 						updatedAt
+// 						stargazerCount
+// 						owner {
+// 							login
+// 							url
+// 							avatarUrl
+// 						}
+//                         nameWithOwner
+//                         description
+//                         url
+//                         readme: object(expression: "HEAD:README.md") {
+//                             ... on Blob {
+//                                 text
+//                         }
+//                 }
+//             }
+//         }
+//     }
+//     pageInfo {
+//       endCursor
+//       hasNextPage
+// 	  hasPreviousPage
+// 	  startCursor
+//     }
+//   }
+// }
+//   `;
+
+// 	try {
+// 		const session = await vscode.authentication.getSession(
+// 			GITHUB_AUTH_PROVIDER_ID,
+// 			SCOPES
+// 		);
+// 		const { graphql } = await import("@octokit/graphql");
+
+// 		const response: any = await graphql(
+// 			graphQLOperation,
+// 			{
+// 				userQuery: modifiedQuery,
+// 				endCursor: payload.endCursor ?? null,
+// 				headers: {
+// 					Authorization: `Bearer ${session?.accessToken}`,
+// 				},
+// 			}
+// 		);
+
+// 		// Check filter criteria
+// 		const checkInstallCommand = (repo: any): boolean => {
+// 			const readmeText = repo.readme?.text || "";
+// 			return (
+// 				readmeText.includes(`"command": "uvx"`) ||
+// 				readmeText.includes(`"command": "npx"`) ||
+// 				readmeText.includes(`"command": "pypi"`) ||
+// 				readmeText.includes(`"command": "docker"`)
+// 			);
+// 		};
+// 		const sortByStars = (edges: any[]) => {
+// 			return edges.sort((a, b) => b.node.stargazerCount - a.node.stargazerCount);
+// 		};
+
+// 		// Separate results into matched and unmatched
+// 		const matchedResults: any[] = [];
+// 		const unmatchedResults: any[] = [];
+
+// 		response.search.edges.forEach((edge: any) => {
+// 			if (checkInstallCommand(edge.node)) {
+// 				matchedResults.push(edge);
+// 			} else {
+// 				unmatchedResults.push(edge);
+// 			}
+// 		});
+
+// 		// Sort matched results by stars (descending)
+// 		const sortedMatchedResults = sortByStars(matchedResults);
+// 		// Combine with matched results first
+// 		const sortedEdges = [...sortedMatchedResults, ...unmatchedResults];
+
+// 		// Transform the results
+// 		const transformedResults = sortedEdges.map((edge: any) => {
+// 			const repo = edge.node;
+// 			const hasInstallCommand = checkInstallCommand(repo);
+			
+// 			return {
+// 				fullName: repo.nameWithOwner,
+// 				stars: repo.stargazerCount,
+// 				author: {
+// 					name: repo.owner.login,
+// 					profileUrl: repo.owner.url,
+// 					avatarUrl: repo.owner.avatarUrl,
+// 				},
+// 				updatedAt: repo.updatedAt,
+// 				description: repo.description,
+// 				url: repo.url,
+// 				readme: repo.readme ? repo.readme.text : null,
+// 				hasInstallCommand, // Include this so UI can show a badge or highlight
+// 			};
+// 		});
+
+// 		return {
+// 			results: transformedResults,
+// 			totalCount: response.search.repositoryCount,
+// 			pageInfo: response.search.pageInfo, // Use GitHub's pagination as-is
+// 		};
+// 	} catch (error: any) {
+// 		console.error(
+// 			`Error searching repositories with user query "${payload.query}":`
+// 		);
+// 		if (error.response && error.response.errors) {
+// 			error.response.errors.forEach((err: any) =>
+// 				console.error(`- ${err.message}`)
+// 			);
+// 		} else {
+// 			console.error(error);
+// 		}
+// 		throw error;
+// 	}
+// }
+
 interface searchWithReadme {
 	query: string;
 	endCursor?: string;
+	startCursor?: string;
+	direction?: 'forward' | 'backward';
 }
+
 export async function searchMcpServers2(payload: searchWithReadme) {
+	const modifiedQuery = `"mcp" in:name,description,topics "${payload.query}" in:name,description sort:stars`;
+	
 	const graphQLOperation = `
-    query SearchRepositories($userQuery: String!, $endCursor: String ) {
-        search(query: $userQuery, type: REPOSITORY, first: 10, after: $endCursor ) {
+    query SearchRepositories($userQuery: String!, $first: Int, $after: String, $last: Int, $before: String) {
+        search(query: $userQuery, type: REPOSITORY, first: $first, after: $after, last: $last, before: $before) {
             repositoryCount
             edges {
                 node {
                     ... on Repository {
+                        updatedAt
+                        stargazerCount
+                        owner {
+                            login
+                            url
+                            avatarUrl
+                        }
                         nameWithOwner
                         description
                         url
                         readme: object(expression: "HEAD:README.md") {
                             ... on Blob {
                                 text
+                            }
                         }
+                    }
                 }
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+                hasPreviousPage
+                startCursor
             }
         }
     }
-    pageInfo {
-      endCursor
-      hasNextPage
-    }
-  }
-}
-  `;
+    `;
 
 	try {
 		const session = await vscode.authentication.getSession(
@@ -144,34 +390,85 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 			SCOPES
 		);
 		const { graphql } = await import("@octokit/graphql");
-		// 3. Execute the GraphQL operation, passing the 'gitHubSearchSyntaxQuery'
-		//    as the value for '$searchQueryVariable'.
+
+		// Set up variables based on direction
+		const variables: any = {
+			userQuery: modifiedQuery,
+		};
+
+		if (payload.direction === 'backward' && payload.startCursor) {
+			variables.last = 10;
+			variables.before = payload.startCursor;
+		} else {
+			variables.first = 10;
+			variables.after = payload.endCursor ?? null;
+		}
+
 		const response: any = await graphql(
-			// Assuming 'graphql' is your client function
 			graphQLOperation,
 			{
-				userQuery: payload.query, // Pass the constructed string as the variable
-				endCursor: payload.endCursor,
+				...variables,
 				headers: {
 					Authorization: `Bearer ${session?.accessToken}`,
 				},
 			}
 		);
-		console.dir(response, { depth: null, colors: true });
-		if (response.search.edges.length === 0) {
-			// throw new Error('No results found'); // Uncomment if you want this behavior
-			console.log("No results found for your query.");
-		}
+
+		// Check filter criteria
+		const checkInstallCommand = (repo: any): boolean => {
+			const readmeText = repo.readme?.text || "";
+			return (
+				readmeText.includes(`"command": "uvx"`) ||
+				readmeText.includes(`"command": "npx"`) ||
+				readmeText.includes(`"command": "pypi"`) ||
+				readmeText.includes(`"command": "docker"`)
+			);
+		};
+		const sortByStars = (edges: any[]) => {
+			return edges.sort((a, b) => b.node.stargazerCount - a.node.stargazerCount);
+		};
+
+		// Separate results into matched and unmatched
+		const matchedResults: any[] = [];
+		const unmatchedResults: any[] = [];
+
+		response.search.edges.forEach((edge: any) => {
+			if (checkInstallCommand(edge.node)) {
+				matchedResults.push(edge);
+			} else {
+				unmatchedResults.push(edge);
+			}
+		});
+
+		// Sort matched results by stars (descending)
+		const sortedMatchedResults = sortByStars(matchedResults);
+
+		// Combine with matched results first (they're already sorted by stars from the query)
+		const sortedEdges = [...sortedMatchedResults, ...unmatchedResults];
+
+		// Transform the results
+		const transformedResults = sortedEdges.map((edge: any) => {
+			const repo = edge.node;
+			const hasInstallCommand = checkInstallCommand(repo);
+			
+			return {
+				fullName: repo.nameWithOwner,
+				stars: repo.stargazerCount,
+				author: {
+					name: repo.owner.login,
+					profileUrl: repo.owner.url,
+					avatarUrl: repo.owner.avatarUrl,
+				},
+				updatedAt: repo.updatedAt,
+				description: repo.description,
+				url: repo.url,
+				readme: repo.readme ? repo.readme.text : null,
+				hasInstallCommand, // Include this so UI can show a badge or highlight
+			};
+		});
+
 		return {
-			results: response.search.edges.map((edge: any) => {
-				const repo = edge.node;
-				return {
-					fullName: repo.nameWithOwner,
-					description: repo.description,
-					url: repo.url,
-					readme: repo.readme ? repo.readme.text : null, // Handle readme text
-				};
-			}),
+			results: transformedResults,
 			totalCount: response.search.repositoryCount,
 			pageInfo: response.search.pageInfo,
 		};
@@ -179,7 +476,6 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 		console.error(
 			`Error searching repositories with user query "${payload.query}":`
 		);
-		// @octokit/graphql errors often have a 'response.errors' array
 		if (error.response && error.response.errors) {
 			error.response.errors.forEach((err: any) =>
 				console.error(`- ${err.message}`)
@@ -187,7 +483,7 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 		} else {
 			console.error(error);
 		}
-		throw error; // Re-throw if you want to handle it further up the call stack
+		throw error;
 	}
 }
 interface GetReadmeParams {

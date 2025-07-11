@@ -6,7 +6,7 @@ import { logError } from '../telemetry/standardizedTelemetry';
 const GITHUB_AUTH_PROVIDER_ID = "github";
 // The GitHub Authentication Provider accepts the scopes described here:
 // https://developer.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/
-const SCOPES = ["user:email", "read:org", "read:user", "workflow"];
+const SCOPES = ["user:email", "read:org", "read:user"];
 const GITHUB_COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98"; // This is a public client ID for Copilot
 
 export class CopilotChatProvider {

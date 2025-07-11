@@ -5,7 +5,6 @@ export const SCOPES = [
 	"user:email",
 	"read:org",
 	"read:user",
-	"workflow",
 ];
 
 export const dspyExamples = async () => [
@@ -14,6 +13,8 @@ export const dspyExamples = async () => [
         name: "playwright-mcp",
         command: "npx",
         args: ["@microsoft/playwright-mcp@latest"],
+		env: {},
+		inputs: []
     },
     {
         readme: await getReadme({repoOwner: "upstash", repoName: "context7"}),
@@ -50,6 +51,7 @@ export const dspyExamples = async () => [
 		name: "gitmcp",
 		command: "npx",
 		args: ["mcp-remote", "https://gitmcp.io/${input:owner}/${input:repo}"],
+		env: {},
 		inputs: [
 			{
 				type: "promptString",
@@ -76,7 +78,6 @@ export const dspyExamples = async () => [
 			QDRANT_API_KEY: "${input:qdrantApiKey}",
 			COLLECTION_NAME: "${input:collectionName}",
 		},
-
 		inputs: [
 			{
 				type: "promptString",

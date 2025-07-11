@@ -15,7 +15,7 @@ import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
-import { aiAssistedSetupType, getReadmeType, cloudMCPInterestType, checkCloudMcpType } from "../../../src/shared/types/rpcTypes";
+import { aiAssistedSetupType, cloudMCPInterestType } from "../../../src/shared/types/rpcTypes";
 interface CloudMcpCheckResult {
   success: boolean;
   exists: boolean;
@@ -41,83 +41,12 @@ interface RepoCardProps {
 const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
   const vscodeApi = useVscodeApi();
   const messenger = useMemo(() => new Messenger(vscodeApi), [vscodeApi]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [readmeContent, setReadmeContent] = useState<string | null>(null);
-  const [shouldShowInstallButton, setShouldShowInstallButton] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState(false);
-  const [readmeLoaded, setReadmeLoaded] = useState(false);
-  const [isLoadingCloudMcp, setIsLoadingCloudMcp] = useState(true);
-  const [cloudMcpDetails, setCloudMcpDetails] = useState<CloudMcpCheckResult | null>(null);
-
-  // Fetch CloudMCP details on mount
-  useEffect(() => {
-    messenger.start();
-    
-    async function fetchCloudMcpDetails() {
-      try {
-        const result = await messenger.sendRequest(checkCloudMcpType, {
-          type: 'extension'
-        }, {
-          repoUrl: repo.url,
-          repoName: repo.name,
-          repoFullName: repo.fullName
-        });
-        
-        setCloudMcpDetails(result);
-        setIsLoadingCloudMcp(false);
-      } catch (error) {
-        console.error("Failed to fetch CloudMCP details:", error);
-        setCloudMcpDetails(null);
-        setIsLoadingCloudMcp(false);
-      }
-    }
-    
-    fetchCloudMcpDetails();
-  }, [messenger, repo.url, repo.name, repo.fullName]);
-
-  // Check CloudMCP details whenever they change
-  useEffect(() => {
-    if (cloudMcpDetails && cloudMcpDetails.success && cloudMcpDetails.installConfig) {
-      // We have installation config from CloudMCP, so we can show the install button
-      setShouldShowInstallButton(true);
-    }
-  }, [cloudMcpDetails]);
+  const [cloudMcpDetails] = useState<CloudMcpCheckResult | null>(null);
 
   useEffect(() => {
     messenger.start();
-    
-    async function getReadme() {
-      const result= await messenger.sendRequest(getReadmeType, {
-        type: 'extension'
-      },{
-        name: repo.name,
-        fullName: repo.fullName,
-        owner: repo.owner
-      });
-      if (result.fullName === repo.fullName) {
-        setReadmeLoaded(true);
-        if (result.readme) {
-          setReadmeContent(result.readme);
-          // Only check readme content if we don't have CloudMCP details with installConfig
-          if (!cloudMcpDetails || !cloudMcpDetails.success || !cloudMcpDetails.installConfig) {
-            const readmeLines = result.readme.replace(/\n/g, "");
-            const showButton =
-              readmeLines.includes(`"command": "uvx"`) ||
-              readmeLines.includes(`"command": "npx"`) ||
-              readmeLines.includes(`"command": "pypi"`) ||
-              readmeLines.includes(`"command": "docker"`);
-            setShouldShowInstallButton(showButton);
-          }
-        } else {
-          setReadmeContent("");
-          if (!cloudMcpDetails || !cloudMcpDetails.success || !cloudMcpDetails.installConfig) {
-            setShouldShowInstallButton(false);
-          }
-        }
-      }
-    }
-    getReadme();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messenger]);
 
   // Helper function to format date (can be expanded)
@@ -129,23 +58,19 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
     });
   };
 
-  const fallbackName = repo.author.name.substring(0, 2).toUpperCase();
-
-  // shouldShowInstallButton is now a state variable updated by useEffect
-
   const handleCloudMCPClick = () => {
     // Send telemetry event
     messenger.sendNotification(cloudMCPInterestType, {
       type: 'extension'
     }, {
       repoName: repo.fullName,
-      repoOwner: repo.author.name,
+      repoOwner: repo.owner,
       timestamp: new Date().toISOString()
     });
   };
 
   const handleInstallClick = async () => {
-    setIsLoading(true);
+    setIsInstalling(true);
     
     // Build install payload
     const installPayload: {
@@ -158,12 +83,12 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
     if (cloudMcpDetails && cloudMcpDetails.success && cloudMcpDetails.installConfig) {
       // We have CloudMCP installation config, include it in the payload
       installPayload.cloudMcpDetails = cloudMcpDetails;
-    } else if (readmeContent) {
+    } else if (repo.readme) {
       // Fall back to readme content for LM parsing
-      installPayload.repo.readme = readmeContent;
+      installPayload.repo.readme = repo.readme;
     } else {
       console.error("Neither CloudMCP details nor README content is available for install.");
-      setIsLoading(false);
+      setIsInstalling(false);
       return;
     }
     
@@ -173,10 +98,10 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
     }, installPayload);
     
     if (result) {
-      setIsLoading(false);
+      setIsInstalling(false);
       setInstallError(false);
     } else {
-      setIsLoading(false);
+      setIsInstalling(false);
       setInstallError(true);
     }
   };
@@ -187,7 +112,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
         <div className="flex items-start space-x-3">
           <Avatar className="h-10 w-10 border">
             <AvatarImage src={repo.author.avatarUrl} alt={repo.author.name} />
-            <AvatarFallback>{fallbackName}</AvatarFallback>
+            <AvatarFallback>{repo.owner}</AvatarFallback>
           </Avatar>
           <div className="flex-grow">
             <a
@@ -230,19 +155,15 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             README Snippet:
           </h4>
           <div className="text-xs p-2 border rounded-md max-h-24 overflow-y-auto prose prose-sm">
-            {readmeLoaded ? (
-              readmeContent ? (
+            { repo.readme ? (
                 <ReactMarkdown
-                  children={readmeContent}
+                  children={repo.readme}
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                 />
               ) : (
                 <p className="text-gray-500 italic">README unavailable</p>
-              )
-            ) : (
-              <p>Loading README...</p>
-            )}
+              )}
           </div>
         </div>
       </CardContent>
@@ -251,10 +172,10 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
           <Button
             variant={"outline"}
             onClick={handleInstallClick}
-            disabled={!shouldShowInstallButton || isLoading || isLoadingCloudMcp}
+            disabled={isInstalling || !repo.hasInstallCommand}
             className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoadingCloudMcp ? "Loading..." : isLoading ? "Installing..." : "Install"}
+            {isInstalling ? "Installing..." : "Install"}
           </Button>
           <Button
             variant={"outline"}

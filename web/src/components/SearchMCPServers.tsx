@@ -38,8 +38,7 @@ const SearchMCPServers: React.FC = () => {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-
-    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [pageInfo, setPageInfo] = useState<{ startCursor?: string; endCursor?: string; hasNextPage?: boolean; hasPreviousPage?: boolean }>({});
     const [totalResults, setTotalResults] = useState<number>(0);
     // totalPages will be derived from totalResults and ITEMS_PER_PAGE
 
@@ -50,17 +49,26 @@ const SearchMCPServers: React.FC = () => {
         messenger.start();
     }, [messenger]);
 
-    const performSearch = async (page: number, debouncedSearchTerm: string) => {
+    const performSearch = async (debouncedSearchTerm: string, endCursor?: string, startCursor?: string, direction?: 'forward' | 'backward' ) => {
         if (debouncedSearchTerm && messenger) {
             setIsLoading(true);
             setError(null);
+            console.log("Sending data: ", {
+                    query: debouncedSearchTerm,
+                    endCursor: endCursor,
+                    startCursor: startCursor,
+                    direction: direction,
+                    
+                })
             try {
                 const result = await messenger.sendRequest(searchServersType, {
                     type: 'extension'
                 },{
                     query: debouncedSearchTerm,
-                    page: page,
-                    perPage: ITEMS_PER_PAGE,
+                    endCursor: endCursor,
+                    startCursor: startCursor,
+                    direction: direction,
+                    
                 });
                 
                 // Add defensive checks without logging
@@ -69,9 +77,10 @@ const SearchMCPServers: React.FC = () => {
                     setIsLoading(false);
                     return;
                 }
-                
+                console.log("first result: ", result.results[0].readme);
                 setResults(result.results || []);
                 setTotalResults(result.totalCount || 0);
+                setPageInfo(result.pageInfo || {});
                 setIsLoading(false);
                 setError(null);
             } catch  {
@@ -90,19 +99,13 @@ const SearchMCPServers: React.FC = () => {
 
     useEffect(() => {
         // Reset to page 1 when search term changes
-        setCurrentPage(1);
-        performSearch(1, debouncedSearchTerm); // Perform search with page 1
+        setPageInfo({});
+        performSearch(debouncedSearchTerm); // Perform search with page 1
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [debouncedSearchTerm]); // Only trigger on debouncedSearchTerm change for new searches
 
 
-    useEffect(() => {
-        // This effect handles subsequent page changes for an existing search term
-        if (debouncedSearchTerm) { // Only search if there's a term
-            performSearch(currentPage, debouncedSearchTerm);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPage]); // Trigger only when currentPage changes for pagination
+     // Trigger only when currentPage changes for pagination
 
 
     const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -112,11 +115,11 @@ const SearchMCPServers: React.FC = () => {
     const totalPages = Math.ceil(totalResults / ITEMS_PER_PAGE);
 
     const handlePreviousPage = () => {
-        setCurrentPage((prev) => Math.max(prev - 1, 1));
+        performSearch(debouncedSearchTerm, undefined, pageInfo.startCursor, 'backward');
     };
 
     const handleNextPage = () => {
-        setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+        performSearch(debouncedSearchTerm, pageInfo.endCursor, undefined, 'forward');
     };
 
     return (
@@ -147,16 +150,14 @@ const SearchMCPServers: React.FC = () => {
                         <div className="flex justify-between items-center mt-4">
                             <Button
                                 onClick={handlePreviousPage}
-                                disabled={currentPage === 1 || isLoading}
+                                disabled={!pageInfo.hasPreviousPage || isLoading}
                             >
                                 Previous
                             </Button>
-                            <span>
-                                Page {currentPage} of {totalPages} (Total: {totalResults})
-                            </span>
+
                             <Button
                                 onClick={handleNextPage}
-                                disabled={currentPage === totalPages || isLoading}
+                                disabled={!pageInfo.hasNextPage || isLoading}
                             >
                                 Next
                             </Button>

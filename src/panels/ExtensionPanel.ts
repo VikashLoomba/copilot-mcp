@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { getReadme, searchMcpServers, type McpServerResult } from "../utilities/repoSearch";
+import { getReadme, searchMcpServers, searchMcpServers2, type McpServerResult } from "../utilities/repoSearch";
 import { type TelemetryReporter } from "@vscode/extension-telemetry";
 import { CopilotChatProvider } from "../utilities/CopilotChat";
 import { dspyExamples } from "../utilities/const";
@@ -35,6 +35,7 @@ import {
 	cloudMCPInterestType,
 	checkCloudMcpType,
 } from "../shared/types/rpcTypes";
+import { outputLogger } from "../utilities/outputLogger";
 
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
@@ -101,13 +102,13 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		messenger.registerWebviewView(webviewView);
 
 		messenger.onRequest(searchServersType, async (payload) => {
-			const page = payload.page || 1;
-			const perPage = payload.perPage || 10;
 			
-			const searchResponse = await searchMcpServers({
+			
+			const searchResponse = await searchMcpServers2({
 				query: payload.query,
-				page,
-				perPage,
+				endCursor: payload.endCursor,
+				startCursor: payload.startCursor,
+				direction: payload.direction,
 			});
 			const results = searchResponse?.results || [];
 			const totalCount = searchResponse?.totalCount || 0;
@@ -120,15 +121,27 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			return { 
 				results, 
 				totalCount, 
-				currentPage: page, 
-				perPage
+				pageInfo: searchResponse.pageInfo 
 			};
 		});
 
 		messenger.onRequest(checkCloudMcpType, async (payload) => {
-			const { repoUrl, repoName, repoFullName } = payload;
-			
+			const { repoUrl, repoName, repoFullName, owner } = payload;
+
 			try {
+				// Get README directly using the getReadme function
+				const readme = await getReadme({
+					repoName: repoName,
+					repoOwner: owner,
+				});
+				
+				outputLogger.debug("Retrieved README", { length: readme.length });
+				
+				// Extract configuration from README
+				const config = await readmeExtractionRequest(readme);
+				
+				// Open installation URI
+				const cmdResponse = await openMcpInstallUri(config);
 				// Check single repository with CloudMCP
 				const result = await cloudMcpIndexer.checkSingleRepository({
 					url: repoUrl,
@@ -188,36 +201,20 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				let setupResult;
 				
 				// Check if we have CloudMCP details with install configuration
-				if (payload.cloudMcpDetails && payload.cloudMcpDetails.success && payload.cloudMcpDetails.installConfig) {
-					console.log("Using CloudMCP installation configuration", payload);
-					
-					// Use the installConfig directly - it's already in the right format
-					const installConfig = payload.cloudMcpDetails.installConfig;
-					
-					const cmdResponse = await openMcpInstallUri(installConfig);
-					console.log("CMD RESPONSE: ", cmdResponse);
-					
-					if (cmdResponse && cmdResponse.uri) {
-						logWebviewInstallUriOpened(cmdResponse.uri);
-					}
-					
-					setupResult = installConfig;
-				} else {
-					// Fall back to parsing README with LM
-					const readmeToParse = payload.repo.readme;
-					if (!readmeToParse) {
-						vscode.window.showErrorMessage(
-							"Neither CloudMCP details nor README content is available for installation."
-						);
-						return false;
-					}
-					
-					setupResult = await this.vscodeLMResponse(
-						readmeToParse,
-						webviewView,
-						payload.repo?.fullName
+				// Fall back to parsing README with LM
+				const readmeToParse = payload.repo.readme;
+				if (!readmeToParse) {
+					vscode.window.showErrorMessage(
+						"Neither CloudMCP details nor README content is available for installation."
 					);
+					return false;
 				}
+				
+				setupResult = await this.vscodeLMResponse(
+					readmeToParse,
+					webviewView,
+					payload.repo?.fullName
+				);
 				
 				if (setupResult) {
 					// Log successful AI assisted setup

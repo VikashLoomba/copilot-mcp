@@ -4,8 +4,10 @@ import {
 } from "vscode-messenger-common";
 
 export const searchServersType: RequestType<
-	{ query: string; page?: number; perPage?: number },
-	{ results: any[]; totalCount: number; currentPage: number; perPage: number; cloudMcpDetails?: Record<string, any> }
+	{ query: string; endCursor?: string;
+	startCursor?: string;
+	direction?: 'forward' | 'backward'; },
+	{ results: any[]; totalCount: number; pageInfo: {startCursor?: string; endCursor?: string; hasNextPage?: boolean; hasPreviousPage?: boolean;} }
 > = { method: "search" };
 
 export const getReadmeType: RequestType<
@@ -43,4 +45,5 @@ export const checkCloudMcpType: RequestType<{
 	repoUrl: string;
 	repoName: string;
 	repoFullName?: string;
+	owner: string;
 }, CloudMcpCheckResult> = { method: "checkCloudMcp" };

@@ -496,11 +496,11 @@ export async function readmeExtractionRequest(readme: string) {
 
 	const gen = ax`
 		readme:${f.string('MCP server readme with instructions')} ->
-		command:${f.string('the command used to start the MCP server. Prefer npx, docker, and uvx commands.')},
-		name:${f.string('The name of the MCP server')},
-		args:${f.array(f.string('arguments to pass in to the command'))},
-		env:${f.json('Environment variables that the MCP server needs. Often includes configurable information such as API keys, hosts, ports, filesystem paths.')},
-		inputs:${f.array(f.json('All user configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources.'))}
+		name:${f.string('Package name')},
+		command:${f.string('Specifies the executable or interpreter to run. Prefer npx, docker, and uvx command, in that order.')},
+		arguments:${f.array(f.string('Package arguments and runtime arguments. These are the arguments that will be passed to the command when it is run.'))},
+		env:${f.json('Environment variables to set for the server process. Often includes configurable information such as API keys, hosts, ports, filesystem paths.')},
+		inputs:${f.array(f.json('User configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources.'))}
 	`;
 	gen.setExamples(await dspyExamples());
 
@@ -509,7 +509,13 @@ export async function readmeExtractionRequest(readme: string) {
 		{ readme },
 		{ stream: false }
 	);
-	return object;
+	return {
+		name: object.name,
+		command: object.command,
+		args: object.arguments,
+		env: object.env,
+		inputs: object.inputs
+	};
 }
 
 export async function openMcpInstallUri(mcpConfig: object) {
