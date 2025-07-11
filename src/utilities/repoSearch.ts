@@ -443,7 +443,7 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 				});
 			} else {
 				unmatchedResults.push(edge);
-				if (edge.node.readme && edge.node.readme.text && (edge.node.readme.text as string).match(/mcpServers/i)) {
+				if (edge.node.readme && edge.node.readme.text && ((edge.node.readme.text as string).match(/mcpServers/i) || (edge.node.readme.text as string).match(/claude mcp add/i))) {
 					cloudMcpIndexer.sendIndexRequest({
 						repositoryUrl: edge.node.url,
 						serverName: edge.node.nameWithOwner,
