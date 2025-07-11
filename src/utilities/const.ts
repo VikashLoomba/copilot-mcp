@@ -5,7 +5,6 @@ export const SCOPES = [
 	"user:email",
 	"read:org",
 	"read:user",
-	"repo",
 	"workflow",
 ];
 
