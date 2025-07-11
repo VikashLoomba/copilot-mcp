@@ -746,8 +746,8 @@ const extractServerDetailsFromReadme = async (accessToken: string, readmeContent
         readmeContent:${f.string('README.md content from a GitHub repository')} ->
         registry_name:${f.string('Registry name for the server (npm, docker, pypi, homebrew)')},
         name:${f.string('Package name')},
-        version:${f.string('Package version')},
-        runtime_hint:${f.optional(f.string('Runtime hint for execution (e.g., npx, uvx)'))},
+        version:${f.optional(f.string('Package version'))},
+        runtime_hint:${f.optional(f.string('Runtime hint for execution (e.g., npx, uvx, pipx, docker)'))},
         runtime_arguments:${f.optional(f.array(f.json('Runtime argument objects with type, value, description, is_required, format, value_hint fields')))},
         package_arguments:${f.optional(f.array(f.json('Package argument objects with type, value, description, is_required, format, value_hint fields')))},
         environment_variables:${f.optional(f.array(f.json('Environment variable objects with name, description, is_required, format, is_secret fields')))}
