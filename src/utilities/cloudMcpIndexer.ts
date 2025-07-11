@@ -576,7 +576,7 @@ export class CloudMcpIndexer {
   }
 
 
-  private async sendIndexRequest(request: { repositoryUrl: string; serverName: string }): Promise<CloudMcpIndexResult> {
+  async sendIndexRequest(request: { repositoryUrl: string; serverName: string }): Promise<CloudMcpIndexResult> {
     try {
       // Get GitHub token from context
       const githubToken = await this.getGitHubToken();

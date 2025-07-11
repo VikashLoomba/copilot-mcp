@@ -266,9 +266,12 @@ class StandardizedTelemetry {
         });
     }
 
-    public logWebviewAiSetupSuccess(): void {
+    public logWebviewAiSetupSuccess(url: string): void {
         this.logEvent({
             name: TelemetryEvents.WEBVIEW_AI_SETUP_SUCCESS,
+            properties: {
+                github_repository_url: url,
+            }
         });
     }
 

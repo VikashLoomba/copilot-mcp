@@ -102,8 +102,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		messenger.registerWebviewView(webviewView);
 
 		messenger.onRequest(searchServersType, async (payload) => {
-			
-			
 			const searchResponse = await searchMcpServers2({
 				query: payload.query,
 				endCursor: payload.endCursor,
@@ -123,66 +121,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				totalCount, 
 				pageInfo: searchResponse.pageInfo 
 			};
-		});
-
-		messenger.onRequest(checkCloudMcpType, async (payload) => {
-			const { repoUrl, repoName, repoFullName, owner } = payload;
-
-			try {
-				// Get README directly using the getReadme function
-				const readme = await getReadme({
-					repoName: repoName,
-					repoOwner: owner,
-				});
-				
-				outputLogger.debug("Retrieved README", { length: readme.length });
-				
-				// Extract configuration from README
-				const config = await readmeExtractionRequest(readme);
-				
-				// Open installation URI
-				const cmdResponse = await openMcpInstallUri(config);
-				// Check single repository with CloudMCP
-				const result = await cloudMcpIndexer.checkSingleRepository({
-					url: repoUrl,
-					name: repoName,
-					fullName: repoFullName
-				});
-				
-				// Return the CloudMCP check result directly
-				return result;
-			} catch (error) {
-				console.error("Error checking CloudMCP for repository:", error);
-				return {
-					success: false,
-					exists: false,
-					error: error instanceof Error ? error.message : 'Unknown error'
-				};
-			}
-		});
-
-		messenger.onRequest(getReadmeType, async (payload) => {
-			console.log("getReadmeType", payload);
-			const { fullName, owner, name } = payload;
-			try {
-				const readmeContent = await getReadme({
-					repoOwner: owner.login,
-					repoName: name,
-				});
-
-				return { readme: readmeContent, fullName };
-			} catch (e) {
-				console.error("Error getting readme", e);
-				
-				// Log README fetch error with standardized telemetry
-				logError(e as Error, 'readme-fetch', {
-					fullName,
-					repoOwner: owner.login,
-					repoName: name,
-				});
-				
-				return { readme: "", fullName };
-			}
 		});
 
 		messenger.onRequest(getMcpConfigType, async (payload) => {
@@ -213,12 +151,12 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				setupResult = await this.vscodeLMResponse(
 					readmeToParse,
 					webviewView,
-					payload.repo?.fullName
+					payload.repo?.url
 				);
 				
 				if (setupResult) {
 					// Log successful AI assisted setup
-					logWebviewAiSetupSuccess();
+					logWebviewAiSetupSuccess(payload.repo.url);
 					endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
 						success: true,
 						repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
@@ -427,7 +365,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public async vscodeLMResponse(
 		readme: string,
 		webviewView?: vscode.WebviewView,
-		repoFullName?: string
+		repoURL?: string
 	) {
 		return await vscode.window.withProgress(
 			{

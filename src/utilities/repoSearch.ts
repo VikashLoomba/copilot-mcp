@@ -1,4 +1,5 @@
 
+import { cloudMcpIndexer } from "./cloudMcpIndexer";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./const";
 // Define interfaces for better type safety and clarity
 export interface SearchMcpServersParams {
@@ -421,7 +422,8 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 				readmeText.includes(`"command": "uvx"`) ||
 				readmeText.includes(`"command": "npx"`) ||
 				readmeText.includes(`"command": "pypi"`) ||
-				readmeText.includes(`"command": "docker"`)
+				readmeText.includes(`"command": "docker"`) ||
+				readmeText.includes(`"command": "pipx"`)
 			);
 		};
 		const sortByStars = (edges: any[]) => {
@@ -435,8 +437,18 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 		response.search.edges.forEach((edge: any) => {
 			if (checkInstallCommand(edge.node)) {
 				matchedResults.push(edge);
+				cloudMcpIndexer.sendIndexRequest({
+					repositoryUrl: edge.node.url,
+					serverName: edge.node.nameWithOwner,
+				});
 			} else {
 				unmatchedResults.push(edge);
+				if (edge.node.readme && edge.node.readme.text && (edge.node.readme.text as string).match(/mcpServers/i)) {
+					cloudMcpIndexer.sendIndexRequest({
+						repositoryUrl: edge.node.url,
+						serverName: edge.node.nameWithOwner,
+					});
+				}
 			}
 		});
 
