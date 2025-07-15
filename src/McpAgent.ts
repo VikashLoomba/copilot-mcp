@@ -8,7 +8,7 @@ import {
 import { CopilotChatProvider } from "./utilities/CopilotChat";
 import { AxAgent, AxFunction, ax, f, AxFunctionProcessor } from "@ax-llm/ax";
 import { getReadme, searchMcpServers2 } from "./utilities/repoSearch";
-import { cloudMcpIndexer } from "./utilities/cloudMcpIndexer";
+import { cloudMcpIndexer, extractServerDetailsFromReadme } from "./utilities/cloudMcpIndexer";
 import { 
 	logChatSearch, 
 	logChatInstall, 
@@ -107,18 +107,6 @@ const createMcpFunctionProcessor = (): AxFunctionProcessor => {
 			description: "Search for MCP server repositories on GitHub",
 			func: async (args: { query: string }) => {
 				const searchResults = await searchMcpServers2({ query: args.query });
-				
-				// Check search results against CloudMCP asynchronously (non-blocking)
-				if (searchResults?.results?.length > 0) {
-					const repositories = searchResults.results.map((result: any) => ({
-						url: result.url,
-						name: result.fullName.split('/')[1] || result.fullName,
-						fullName: result.fullName
-					}));
-					cloudMcpIndexer.checkRepositories(repositories).catch((error: any) => {
-						outputLogger.warn("Failed to check repositories with CloudMCP", error);
-					});
-				}
 				
 				return searchResults;
 			},
@@ -490,10 +478,20 @@ class GitHubSearchTool
 }
 
 export async function readmeExtractionRequest(readme: string) {
+	// Try to get GitHub token from VSCode authentication API using the same scopes as extension activation
+	const session = await vscode.authentication.getSession(GITHUB_AUTH_PROVIDER_ID, SCOPES, { createIfNone: false });
+	const accessToken = session?.accessToken;
+	if (!accessToken) {
+		throw new Error("Copilot not set up.");
+	}
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
 	provider.setOptions({ debug: false });
-
+	const details = await extractServerDetailsFromReadme(accessToken, readme, false);
+	if (details && !('error' in details) && ('name' in details)) {
+		return cloudMcpIndexer.transformPackageToInstallFormat(details);
+	}
+	outputLogger.warn("Failed to extract server details from README, falling back to old example dspy extraction", { errorDetails: details });
 	const gen = ax`
 		readme:${f.string('MCP server readme with instructions')} ->
 		name:${f.string('Package name')},

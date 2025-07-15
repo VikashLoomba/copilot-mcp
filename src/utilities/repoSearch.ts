@@ -33,6 +33,7 @@ export interface SearchMcpServersResponse {
 	hasMore: boolean;
 }
 import * as vscode from "vscode";
+import { outputLogger } from "./outputLogger";
 export async function searchMcpServers(
 	params: SearchMcpServersParams
 ): Promise<any | undefined> {
@@ -440,7 +441,7 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 				cloudMcpIndexer.sendIndexRequest({
 					repositoryUrl: edge.node.url,
 					serverName: edge.node.nameWithOwner,
-				});
+				}).catch(err => outputLogger.warn("Failed to send index request", err));
 			} else {
 				unmatchedResults.push(edge);
 				if (edge.node.readme && edge.node.readme.text) {
@@ -448,13 +449,13 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 						cloudMcpIndexer.sendIndexRequest({
 							repositoryUrl: edge.node.url,
 							serverName: edge.node.nameWithOwner,
-						});
+						}).catch(err => outputLogger.warn("Failed to send index request", err));;
 					}
 					else if ((edge.node.readme.text as string).match(/claude mcp add/i)){
 						cloudMcpIndexer.sendIndexRequest({
 							repositoryUrl: edge.node.url,
 							serverName: edge.node.nameWithOwner,
-						});
+						}).catch(err => outputLogger.warn("Failed to send index request", err));;
 					}
 				}
 			}
@@ -511,34 +512,27 @@ interface GetReadmeParams {
 	repoName: string;
 }
 export async function getReadme(payload: GetReadmeParams) {
-	const graphqlQuery = `query GetReadme($owner: String!, $name: String!) {
-        repository(owner: $owner, name: $name) {
-            readme: object(expression: "HEAD:README.md") {
-                ... on Blob {
-                    text
+    const session = await vscode.authentication.getSession(
+        GITHUB_AUTH_PROVIDER_ID,
+        SCOPES
+    );
+    
+    try {
+        const response = await fetch(
+            `https://api.github.com/repos/${payload.repoOwner}/${payload.repoName}/readme`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${session?.accessToken}`,
+                    'Accept': 'application/vnd.github.v3.raw'
                 }
             }
+        );
+        
+        if (response.ok) {
+            return await response.text();
         }
-    }`;
-	const session = await vscode.authentication.getSession(
-		GITHUB_AUTH_PROVIDER_ID,
-		SCOPES
-	);
-	const { graphql } = await import("@octokit/graphql");
-	const { repository }: any = await graphql(
-		// Assuming 'graphql' is your client function
-		graphqlQuery,
-		{
-			owner: payload.repoOwner, // Pass the constructed string as the variable
-			name: payload.repoName,
-			headers: {
-				Authorization: `Bearer ${session?.accessToken}`,
-			},
-		}
-	);
-	// Check if repository and readme exist before accessing text
-	if (!repository || !repository.readme || !repository.readme.text) {
-		return ""; // Return empty string if no README found
-	}
-	return repository.readme.text;
+        return "";
+    } catch (error) {
+        return "";
+    }
 }

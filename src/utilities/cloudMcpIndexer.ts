@@ -152,7 +152,7 @@ export class CloudMcpIndexer {
       const indexResult = await this.sendIndexRequest({
         repositoryUrl: repo.url,
         serverName: repo.name
-      });
+      }).catch(err => ({success: false, details: undefined, error: err instanceof Error ? err.message : 'Unknown error', serverName: repo.name}));
       
       // Check if repository is already indexed in CloudMCP
       const cloudMcpServer = await this.searchRepository(repo.url);
@@ -162,7 +162,7 @@ export class CloudMcpIndexer {
         const selectedPackage = this.selectBestPackage(cloudMcpServer.packages);
         
         if (selectedPackage) {
-          const installConfig = this.transformPackageToInstallFormat(cloudMcpServer, selectedPackage);
+          const installConfig = this.transformPackageToInstallFormat(selectedPackage);
           
           const result: CloudMcpCheckResult = {
             success: true,
@@ -277,9 +277,9 @@ export class CloudMcpIndexer {
   /**
    * Transform CloudMCP package to the format expected by openMcpInstallUri
    */
-  private transformPackageToInstallFormat(cloudMcpServer: CloudMcpSearchResult, selectedPackage: CloudMcpPackage): InstallConfig {
+  public transformPackageToInstallFormat(selectedPackage: CloudMcpPackage): InstallConfig {
     const result: InstallConfig = {
-      name: cloudMcpServer.name,
+      name: selectedPackage.name,
       command: selectedPackage.runtime_hint || this.getCommandFromRegistry(selectedPackage.registry_name),
       args: [],
       env: {},
@@ -497,7 +497,7 @@ export class CloudMcpIndexer {
           const selectedPackage = this.selectBestPackage(cloudMcpServer.packages);
           
           if (selectedPackage) {
-            const installConfig = this.transformPackageToInstallFormat(cloudMcpServer, selectedPackage);
+            const installConfig = this.transformPackageToInstallFormat(indexResult.details);
             
             const resultObject = {
               success: true,
@@ -588,18 +588,6 @@ export class CloudMcpIndexer {
         };
       }
 
-      const preExtractedDetails = await extractServerDetails(githubToken, request.repositoryUrl);
-       outputLogger.debug("Pre-extracted server details", preExtractedDetails);
-      if ('success' in preExtractedDetails && preExtractedDetails.success === false) {
-        outputLogger.error("Error extracting server details", new Error(preExtractedDetails.error));
-        return {
-          success: false,
-          error: preExtractedDetails.error,
-          serverName: request.serverName
-        };
-      }
-
-
       // Extract owner and repo from URL
       const githubUrlPattern = /^https:\/\/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/)?$/;
       const match = request.repositoryUrl.match(githubUrlPattern);
@@ -614,6 +602,20 @@ export class CloudMcpIndexer {
       
       const owner = match[1];
       const repo = match[2];
+
+      const preExtractedDetails = await extractServerDetails(githubToken, request.repositoryUrl, repo, owner);
+       outputLogger.debug("Pre-extracted server details", preExtractedDetails);
+      if ('success' in preExtractedDetails && preExtractedDetails.success === false) {
+        outputLogger.error("Error extracting server details", new Error(preExtractedDetails.error));
+        return {
+          success: false,
+          error: preExtractedDetails.error,
+          serverName: request.serverName
+        };
+      }
+
+
+      
 
       const response = await fetch(`${this.baseUrl}/api/mcp/import-oss`, {
         method: "POST",
@@ -702,7 +704,7 @@ import * as vscode from "vscode";
 import { CopilotChatProvider } from "./CopilotChat";
 
 
-export const extractServerDetails = async (accessToken: string, repositoryUrl: string) => {
+export const extractServerDetails = async (accessToken: string, repositoryUrl: string, repoName: string, repoOwner: string) => {
     // Initialize Octokit with the access token
     const { Octokit } = await import('@octokit/rest');
     console.log("Have token? ", accessToken);
@@ -713,24 +715,16 @@ export const extractServerDetails = async (accessToken: string, repositoryUrl: s
 
     // Parse the repository URL to get owner and repo
     const [owner, repo] = repositoryUrl.split('/').slice(-2);
-    console.log("Parsed owner and repo: ", owner, repo);
+    outputLogger.info("Parsed owner and repo: ", owner, repo);
     // First, fetch the readme.md file of the repository
     try {
-      const response = await octokit.repos.getReadme({
-          owner,
-          repo
-      });
-      if (response.status !== 200 || !response.data) {
-        return {
-          success: false,
-          error: `Failed to fetch README.md from ${repositoryUrl}: ${response}`,
-          serverName: repo
-        };
-      }
-      const readmeContent = Buffer.from(response.data.content, 'base64').toString('utf-8');
+      // Get README directly using the getReadme function
+      const readme = await getExampleReadme(accessToken, `${repoOwner}/${repoName}`);
+
+      outputLogger.debug(`Fetched README.md from ${repositoryUrl}, length: ${readme.length}`);
   
       // Then, use the readme content to extract the server details
-      const serverDetails = await extractServerDetailsFromReadme(accessToken, readmeContent);
+      const serverDetails = await extractServerDetailsFromReadme(accessToken, readme);
       return serverDetails;
     } catch (error) {
       return {
@@ -741,10 +735,10 @@ export const extractServerDetails = async (accessToken: string, repositoryUrl: s
     }
 };
 
-const extractServerDetailsFromReadme = async (accessToken: string, readmeContent: string) => {
+export const extractServerDetailsFromReadme = async (accessToken: string, readmeContent: string, asArray: boolean = true) => {
     const gen = ax`
         readmeContent:${f.string('README.md content from a GitHub repository')} ->
-        registry_name:${f.string('Registry name for the server (npm, docker, pypi, homebrew)')},
+        registry_name:${f.optional(f.string('Registry name for the server (npm, docker, pypi, git)'))},
         name:${f.string('Package name')},
         version:${f.optional(f.string('Package version'))},
         runtime_hint:${f.optional(f.string('Runtime hint for execution (e.g., npx, uvx, pipx, docker)'))},
@@ -758,11 +752,12 @@ const extractServerDetailsFromReadme = async (accessToken: string, readmeContent
         const result = await gen.forward(CopilotChatProvider.getInstance().provider, {
             readmeContent: readmeContent
         }, {
-            model: 'gpt-4.1'
+            model: 'gpt-4.1',
+            modelConfig: {
+              maxTokens: 111452
+            }
         });
-
-        // Return as an array of packages (API expects packages array)
-        return [{
+        const details = {
             registry_name: result.registry_name,
             name: result.name,
             version: result.version || "latest",
@@ -770,7 +765,12 @@ const extractServerDetailsFromReadme = async (accessToken: string, readmeContent
             ...(result.runtime_arguments && { runtime_arguments: result.runtime_arguments }),
             ...(result.package_arguments && { package_arguments: result.package_arguments }),
             ...(result.environment_variables && { environment_variables: result.environment_variables })
-        }];
+        };
+        if (!asArray) {
+            return details as CloudMcpPackage;
+        }
+        // Return as an array of packages (API expects packages array)
+        return [details];
     } catch (error) {
         if (error instanceof AxGenerateError) {
             return {
@@ -809,6 +809,7 @@ const exampleURLAndResponses = async (accessToken: string) => [
     {
         readmeContent: await getExampleReadme(accessToken, 'mark3labs/mcp-filesystem-server'),
         registry_name: "docker",
+        runtime_hint: "docker",
         name: "mark3labs/mcp-filesystem-server",
         version: "latest",
         package_arguments: [
@@ -831,17 +832,203 @@ const exampleURLAndResponses = async (accessToken: string) => [
         ]
     },
     {
-        readmeContent: await getExampleReadme(process.env.GITHUB_TOKEN as string, 'ppl-ai/modelcontextprotocol'),
+      readmeContent: await getExampleReadme(accessToken, "ppl-ai/modelcontextprotocol"),
+      registry_name: "docker",
+      name: "perplexity-ask",
+      version: "latest",
+      package_arguments: [
+          {
+              type: "positional",
+              value: "run",
+              description: "Docker run command",
+              is_required: true,
+              format: "string",
+              value_hint: "run"
+          },
+          {
+              type: "flag",
+              value: "-i",
+              description: "Keep STDIN open even if not attached",
+              is_required: false,
+              format: "string",
+              value_hint: "-i"
+          },
+          {
+              type: "flag",
+              value: "--rm",
+              description: "Automatically remove container when it exits",
+              is_required: false,
+              format: "string",
+              value_hint: "--rm"
+          },
+          {
+              type: "flag",
+              value: "-e",
+              description: "Set environment variable",
+              is_required: true,
+              format: "string",
+              value_hint: "-e"
+          },
+          {
+              type: "positional",
+              value: "PERPLEXITY_API_KEY",
+              description: "Environment variable name to pass to container",
+              is_required: true,
+              format: "string",
+              value_hint: "PERPLEXITY_API_KEY"
+          },
+          {
+              type: "positional",
+              value: "mcp/perplexity-ask",
+              description: "Docker container image",
+              is_required: true,
+              format: "string",
+              value_hint: "mcp/perplexity-ask"
+          }
+      ],
+      environment_variables: [
+          {
+              name: "PERPLEXITY_API_KEY",
+              description: "YOUR_API_KEY_HERE",
+              is_required: true,
+              format: "string",
+              is_secret: true
+          }
+      ]
+  },
+    {
+        readmeContent: await getExampleReadme(accessToken, "microsoft/playwright-mcp"),
         registry_name: "npm",
-        name: "ppl-ai/modelcontextprotocol",
+        name: "playwright-mcp",
         version: "latest",
+        package_arguments: [
+            {
+                type: "positional",
+                value: "@microsoft/playwright-mcp@latest",
+                description: "Microsoft Playwright MCP package",
+                is_required: true,
+                format: "string",
+                value_hint: "@microsoft/playwright-mcp@latest"
+            }
+        ]
+    },
+    {
+        readmeContent: await getExampleReadme(accessToken, "upstash/context7"),
+        registry_name: "npm",
+        name: "context7",
+        version: "latest",
+        package_arguments: [
+            {
+                type: "flag",
+                value: "-y",
+                description: "Auto-confirm installation",
+                is_required: false,
+                format: "string",
+                value_hint: "-y"
+            },
+            {
+                type: "positional",
+                value: "@upstash/context7@latest",
+                description: "Upstash Context7 package",
+                is_required: true,
+                format: "string",
+                value_hint: "@upstash/context7@latest"
+            }
+        ]
+    },
+    {
+        readmeContent: await getExampleReadme(accessToken, "21st-dev/magic-mcp"),
+        registry_name: "npm",
+        name: "@21st-dev/magic",
+        version: "latest",
+        package_arguments: [
+            {
+                type: "flag",
+                value: "-y",
+                description: "Auto-confirm installation",
+                is_required: false,
+                format: "string",
+                value_hint: "-y"
+            },
+            {
+                type: "positional",
+                value: "@21st-dev/magic@latest",
+                description: "21st.dev Magic MCP package",
+                is_required: true,
+                format: "string",
+                value_hint: "@21st-dev/magic@latest"
+            }
+        ],
         environment_variables: [
             {
-                name: "PERPLEXITY_API_KEY",
-                description: "YOUR_API_KEY_HERE",
+                name: "API_KEY",
+                description: "21st.dev Magic API Key",
                 is_required: true,
                 format: "string",
                 is_secret: true
+            }
+        ]
+    },
+    {
+        readmeContent: await getExampleReadme(accessToken, "idosal/git-mcp"),
+        registry_name: "npm",
+        name: "gitmcp",
+        version: "latest",
+        package_arguments: [
+            {
+                type: "positional",
+                value: "mcp-remote",
+                description: "MCP remote command",
+                is_required: true,
+                format: "string",
+                value_hint: "mcp-remote"
+            },
+            {
+                type: "positional",
+                value: "https://gitmcp.io/${input:owner}/${input:repo}",
+                description: "Git MCP repository URL",
+                is_required: true,
+                format: "string",
+                value_hint: "https://gitmcp.io/owner/repo"
+            }
+        ]
+    },
+    {
+        readmeContent: await getExampleReadme(accessToken, "qdrant/mcp-server-qdrant"),
+        registry_name: "pypi",
+        name: "qdrant",
+        version: "latest",
+        package_arguments: [
+            {
+                type: "positional",
+                value: "mcp-server-qdrant",
+                description: "Qdrant MCP server package",
+                is_required: true,
+                format: "string",
+                value_hint: "mcp-server-qdrant"
+            }
+        ],
+        environment_variables: [
+            {
+                name: "QDRANT_URL",
+                description: "Qdrant URL",
+                is_required: true,
+                format: "string",
+                is_secret: false
+            },
+            {
+                name: "QDRANT_API_KEY",
+                description: "Qdrant API Key",
+                is_required: true,
+                format: "string",
+                is_secret: true
+            },
+            {
+                name: "COLLECTION_NAME",
+                description: "Collection Name",
+                is_required: true,
+                format: "string",
+                is_secret: false
             }
         ]
     }
