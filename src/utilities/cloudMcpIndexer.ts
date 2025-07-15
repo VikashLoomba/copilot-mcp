@@ -694,14 +694,6 @@ import { CopilotChatProvider } from "./CopilotChat";
 
 
 export const extractServerDetails = async (accessToken: string, repositoryUrl: string, repoName: string, repoOwner: string) => {
-    // Initialize Octokit with the access token
-    const { Octokit } = await import('@octokit/rest');
-    console.log("Have token? ", accessToken);
-    console.log("Repository URL: ", repositoryUrl);
-    const octokit = new Octokit({
-        auth: accessToken,
-    });
-
     // Parse the repository URL to get owner and repo
     const [owner, repo] = repositoryUrl.split('/').slice(-2);
     outputLogger.info("Parsed owner and repo: ", owner, repo);
