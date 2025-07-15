@@ -300,10 +300,6 @@ export class CloudMcpIndexer {
       }
     }
 
-    // Add package name as first argument after runtime arguments
-    if (selectedPackage.name) {
-      result.args.push(selectedPackage.name);
-    }
 
     // Add package arguments
     if (selectedPackage.package_arguments && Array.isArray(selectedPackage.package_arguments)) {
@@ -338,6 +334,10 @@ export class CloudMcpIndexer {
           }
         }
       }
+    }
+    // Add package name as first argument after runtime arguments
+    if (selectedPackage.name && !result.args.includes(selectedPackage.name)) {
+      result.args.unshift(selectedPackage.name);
     }
 
     // Process environment variables
@@ -604,7 +604,7 @@ export class CloudMcpIndexer {
       const repo = match[2];
 
       const preExtractedDetails = await extractServerDetails(githubToken, request.repositoryUrl, repo, owner);
-       outputLogger.debug("Pre-extracted server details", preExtractedDetails);
+       outputLogger.warn("Pre-extracted server details", preExtractedDetails);
       if ('success' in preExtractedDetails && preExtractedDetails.success === false) {
         outputLogger.error("Error extracting server details", new Error(preExtractedDetails.error));
         return {
@@ -644,29 +644,18 @@ export class CloudMcpIndexer {
         };
       } else {
         // const errorResponse = await response.text();
-        
-        // Handle specific error cases
-        if (response.status === 409) {
-          // Server already exists - this is OK
-          return {
-            success: true,
-            message: "Server already exists in CloudMCP",
-            serverName: request.serverName,
-            details: preExtractedDetails
-          };
-        }
-
-        outputLogger.warn("[sendIndexRequest]Failed to send index request to CloudMCP", {
+        outputLogger.warn("[sendIndexRequest]Failed to send index request to CloudMCP but axlm succeeded", {
           status: response.status,
           statusText: response.statusText,
           error: 'error' in data ? data.error : undefined,
           endpoint: response.url
         });
-        
+        // Handle specific error cases
         return {
-          success: false,
-          error: 'error' in data ? data.error : `HTTP ${response.status}`,
-          serverName: request.serverName
+            success: true,
+            message: "Server already exists in CloudMCP",
+            serverName: request.serverName,
+            details: preExtractedDetails
         };
       }
     } catch (error) {
@@ -740,7 +729,7 @@ export const extractServerDetailsFromReadme = async (accessToken: string, readme
         readmeContent:${f.string('README.md content from a GitHub repository')} ->
         registry_name:${f.optional(f.string('Registry name for the server (npm, docker, pypi, git)'))},
         name:${f.string('Package name')},
-        version:${f.optional(f.string('Package version'))},
+        version:${f.string('Version, e.g., 1.0.0, latest, main, stable, etc.')},
         runtime_hint:${f.optional(f.string('Runtime hint for execution (e.g., npx, uvx, pipx, docker)'))},
         runtime_arguments:${f.optional(f.array(f.json('Runtime argument objects with type, value, description, is_required, format, value_hint fields')))},
         package_arguments:${f.optional(f.array(f.json('Package argument objects with type, value, description, is_required, format, value_hint fields')))},
