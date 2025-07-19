@@ -1,5 +1,34 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.66 – CloudMCP.run Official Launch! 🚀
+*(July 2025)*
+
+**Give Your AI Real Superpowers – No Technical Setup Required!**
+
+We're thrilled to announce the official launch of **CloudMCP.run** – a revolutionary platform that transforms Copilot, Claude, and any MCP-enabled AI from basic agents into powerful assistants that can actually *do things*!
+
+**What's New**
+
+* **🌟 Deploy with CloudMCP Button** – Every MCP server in search results now features a "Deploy on CloudMCP" button that takes you directly to CloudMCP.run
+* **⚡ 30-Second Server Setup** – CloudMCP handles OAuth sign-in automatically – no API keys, terminal, or local process needed!
+* **🔐 Enterprise-Grade Security** – Industry-standard OAuth 2.1 ensures your data stays secure with granular access control
+* **💰 Flexible Pricing** – Affordable for anyone!
+* **📱 Works Everywhere** – VSCode, Mobile apps, web clients, desktop tools – if it supports MCP, it works with CloudMCP!
+
+**Why CloudMCP Changes Everything**
+
+Finally, a remote MCP hosting solution that makes it easy for anyone to connect their AI to the tools and data they need. With CloudMCP.run, you can:
+- Connect to any API or service seamlessly
+- Schedule meetings directly in your calendar
+- Search and analyze your data in real-time  
+- Manage files and documents instantly
+
+**Coming Soon**: Tighter integration between VSCode and CloudMCP.run for one-click deployment directly from the extension!
+
+Visit [CloudMCP.run](https://www.cloudmcp.run) to start your trial and give your AI real superpowers today!
+
+---
+
 ## Version 0.0.54 – CloudMCP.run Integration & Improved Installation Experience
 *(July 2025)*
 

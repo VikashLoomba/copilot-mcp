@@ -273,6 +273,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					timestamp: payload.timestamp,
 				},
 			});
+
+			await vscode.env.openExternal(vscode.Uri.parse("https://cloudmcp.run?utm_source=copilot-mcp"));
 			
 			// Show notification to user
 			vscode.window.showInformationMessage(

@@ -182,7 +182,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             onClick={handleCloudMCPClick}
             className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] opacity-70 hover:opacity-100"
           >
-            Deploy on CloudMCP.run
+            Deploy on CloudMCP
           </Button>
         </CardFooter>
       )}
@@ -201,7 +201,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             onClick={handleCloudMCPClick}
             className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] opacity-70 hover:opacity-100"
           >
-            Deploy on CloudMCP.run
+            Deploy on CloudMCP
           </Button>
         </CardFooter>
       )}
