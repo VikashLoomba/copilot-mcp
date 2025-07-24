@@ -274,13 +274,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				},
 			});
 
-			await vscode.env.openExternal(vscode.Uri.parse("https://cloudmcp.run?utm_source=copilot-mcp"));
+			await vscode.env.openExternal(vscode.Uri.parse("https://cloudmcp.run/pricing?utm_source=copilot-mcp"));
 			
-			// Show notification to user
-			vscode.window.showInformationMessage(
-				`Thanks for your interest in CloudMCP.run! We'll notify you when it's available. This service will allow you to deploy ${payload.repoName} to the cloud with one click.`,
-				{ modal: false }
-			);
 		});
 
 		webviewView.webview.options = {

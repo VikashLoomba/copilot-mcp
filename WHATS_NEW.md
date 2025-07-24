@@ -1,5 +1,10 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.67 – CloudMCP.run Special Pricing!
+
+Limited time offer for Copilot MCP users! Get **100% off** your first month on CloudMCP.run when you sign up!
+
+
 ## Version 0.0.66 – CloudMCP.run Official Launch! 🚀
 *(July 2025)*
 
