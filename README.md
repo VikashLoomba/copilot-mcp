@@ -4,7 +4,7 @@
 <div align="center">
   <a href="vscode://AutomataLabs.copilot-mcp"><img src="https://badgen.net/vs-marketplace/i/AutomataLabs.copilot-mcp?icon=visualstudio" /></a>
 
-[![](https://dcbadge.limes.pink/api/server/https://discord.gg/copilotmcp)](https://discord.gg/copilotmcp)
+[![](https://dcbadge.limes.pink/api/server/https://discord.gg/copilotmcp)](https://discord.gg/cloudmcp)
 
 </div>
 <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0;">
