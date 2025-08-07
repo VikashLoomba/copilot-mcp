@@ -1,5 +1,50 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.68 – One-Click VSCode Installation from CloudMCP.run!
+*(August 2025)*
+
+**Deploy Any MCP Server to VSCode with a Single Click!**
+
+![VSCode Installation Dialog showing one-click install button](image2.png)
+
+We've just made it incredibly easy to go from discovering an MCP server to using it in VSCode. CloudMCP.run now offers **seamless one-click installation** directly into your VSCode environment – no terminal, no manual configuration, just instant productivity!
+
+**What's New**
+
+* **🚀 One-Click VSCode Installation** – Deploy any MCP server from NPM, PyPI, or GitHub, then install it directly in VSCode with a single button click
+* **🎁 Free for Copilot MCP Users** – Get 2 free deployments, no credit card required – just sign in with GitHub and start deploying!
+* **📦 Universal Package Support** – Custom deployment feature supports any MCP server, not just those in our registry
+* **⚡ Instant Setup** – From deployment to VSCode integration in under 30 seconds
+* **🔐 Secure & Isolated** – Each deployment runs in its own secure environment with enterprise-grade protection
+
+**How It Works**
+
+1. Deploy any MCP server on CloudMCP.run (from our registry or custom packages)
+2. Click the "Install in VSCode" button on your active deployment
+3. Choose VSCode as your installation method
+4. Click "Install in VSCode" – that's it!
+
+![CloudMCP Active Deployment with Install in VSCode button](image.png)
+
+**Why This Changes Everything**
+
+No more wrestling with:
+- Terminal commands and package managers
+- Environment variables and API keys
+- Local process management
+- Configuration file editing
+
+Just deploy on CloudMCP.run and instantly use your MCP servers in VSCode with GitHub Copilot!
+
+**Try It Today – 2 Free Deployments!**
+
+Experience the magic of one-click MCP server installation. Visit [CloudMCP.run](https://www.cloudmcp.run?ref=copilot-mcp) to explore our growing catalog of MCP servers or deploy your own custom servers from any package registry.
+
+* **Learn more**: Read our [detailed guide on deploying any MCP server](https://www.cloudmcp.run/blog/deploy-any-mcp-server?ref=copilot-mcp)
+* **View pricing**: Check out our [flexible pricing options](https://www.cloudmcp.run/pricing?ref=copilot-mcp) after your free deployments
+
+---
+
 ## Version 0.0.67 – CloudMCP.run Special Pricing!
 
 Limited time offer for Copilot MCP users! Get **100% off** your first month on CloudMCP.run when you sign up!
