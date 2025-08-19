@@ -93,7 +93,6 @@ export interface CloudMcpCheckResult {
 
 export class CloudMcpIndexer {
   private static instance: CloudMcpIndexer;
-  private context: ExtensionContext | undefined;
   
   private constructor() {}
 
@@ -104,8 +103,7 @@ export class CloudMcpIndexer {
     return CloudMcpIndexer.instance;
   }
 
-  initialize(context: ExtensionContext) {
-    this.context = context;
+  initialize(_context: ExtensionContext) {
   }
 
 

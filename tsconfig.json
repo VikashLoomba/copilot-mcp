@@ -1,7 +1,8 @@
 {
 	"compilerOptions": {
-		"module": "CommonJS",
-		"moduleResolution": "node",
+		"module": "esnext",
+		// "moduleResolution": "Node16",
+		"moduleResolution": "bundler",
 		"target": "ES2022",
 		"lib": [
 			"ES2022",
@@ -9,10 +10,7 @@
 		],
 		"sourceMap": true,
 		"rootDir": "src",
-		"strict": false,   /* enable all strict type-checking options */
-		"allowSyntheticDefaultImports": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
+		"strict": true,   /* enable all strict type-checking options */
 		/* Additional Checks */
 		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
