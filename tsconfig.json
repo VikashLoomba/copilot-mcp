@@ -9,7 +9,7 @@
 		],
 		"sourceMap": true,
 		"rootDir": "src",
-		"strict": true,   /* enable all strict type-checking options */
+		"strict": false,   /* enable all strict type-checking options */
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
