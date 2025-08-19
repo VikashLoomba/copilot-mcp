@@ -452,7 +452,7 @@ class GitHubSearchTool
 			
 			// Return the results as a LanguageModelToolResult
 			const results = installableRepositories.map(
-				(result) => new vscode.LanguageModelTextPart(JSON.stringify(result))
+				(result: any) => new vscode.LanguageModelTextPart(JSON.stringify(result))
 			);
 			
 			return new vscode.LanguageModelToolResult(results);
