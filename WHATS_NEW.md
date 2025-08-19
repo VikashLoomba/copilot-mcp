@@ -1,5 +1,44 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.70 – GPT-5-mini Powered Installation & Enhanced Reliability! 🚀
+*(August 19 2025)*
+
+**Intelligent MCP Server Installation with Advanced AI Assistance!**
+
+We've supercharged Copilot MCP with GPT-5-mini to make installing MCP servers smarter, faster, and more reliable than ever before! 
+
+This release brings major performance improvements and an improved installation process. 
+
+Use Copilot MCP in VSCode Copilot Chat to ask for help finding and installing MCP servers, and let Copilot guide you through the process with ease!
+
+![VSCode Chat Participant](image4.png)
+
+**What's New**
+
+* **🤖 GPT-5-mini AI Assistant** – Advanced AI now guides you through MCP server installations, providing intelligent and reliable setup for servers
+* **⚡ Enhanced NPX/UVX/Docker MCP Server Support** – Dramatically improved reliability for installing MCP servers using NPX, UVX, and Docker
+* **🔍 Smart Installation Detection** – Automatically detects the best installation method for each MCP server
+* **🚀 Performance Boost** – Significant improvements in search speed, installation time, and overall extension responsiveness
+* **🔧 Intelligent Error Recovery** – AI-powered error detection and resolution suggestions during installation
+
+**Coming Soon**
+* **🌐 CloudMCP.run Integration** – Seamless one-click deployment of MCP servers to CloudMCP.run and installation in VSCode.
+ 
+
+**CloudMCP.run Updates**
+
+* **🌐 CloudMCP.run Search** – CloudMCP now features enhanced search, integrating with mcp-get to help you find and deploy remote MCP Servers secured by OAuth 2.1!
+
+Tired of dealing with local installations? Try [CloudMCP.run](https://www.cloudmcp.run?ref=copilot-mcp) for zero-setup, cloud-hosted MCP servers! Get started with your first month free!
+
+![CloudMCP Enhanced Search Page](image3.png)
+
+**Thanks for being a user**
+
+of Copilot MCP! We hope you enjoy these powerful new features that make it easier than ever to discover, install, and use MCP servers in your development workflow.
+
+---
+
 ## Version 0.0.68 – One-Click VSCode Installation from CloudMCP.run!
 *(August 2025)*
 

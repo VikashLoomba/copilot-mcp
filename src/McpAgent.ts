@@ -6,9 +6,8 @@ import {
 	SCOPES,
 } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
-import { AxAgent, AxFunction, ax, f, AxFunctionProcessor } from "@ax-llm/ax";
+import { AxAgent, AxFunction, ax, f, AxFunctionProcessor, agent } from "@ax-llm/ax";
 import { getReadme, searchMcpServers2 } from "./utilities/repoSearch";
-import { cloudMcpIndexer, extractServerDetailsFromReadme } from "./utilities/cloudMcpIndexer";
 import { 
 	logChatSearch, 
 	logChatInstall, 
@@ -44,20 +43,14 @@ const getRepoReadme: AxFunction = {
 };
 
 // Create specialized agents for composition
-export const createQueryGeneratorAgent = (): AxAgent<
-	{ originalUserMessage: string },
-	{ query: string }
-> => {
-	const agent = new AxAgent<
-		{ originalUserMessage: string },
-		{ query: string }
-	>({
+export const createQueryGeneratorAgent = (): ReturnType<typeof agent> => {
+	const queryAgent = agent(`originalUserMessage:string "The original user message that was sent to the agent." -> query:string "A search query that can be used to find relevant MCP server repositories using the GitHub repository search API."`,{
 		name: "Query Generator Agent",
 		description: "An AI Agent that generates search queries for finding MCP servers.",
-		signature: `originalUserMessage:string "The original user message that was sent to the agent." -> query:string "A search query that can be used to find relevant MCP server repositories using the GitHub repository search API."`,
+		
 	});
 	
-	agent.setExamples([
+	queryAgent.setExamples([
 		{
 			originalUserMessage: "Find a MCP server for managing Kubernetes clusters",
 			query: "mcp server kubernetes"
@@ -80,23 +73,15 @@ export const createQueryGeneratorAgent = (): AxAgent<
 		}
 	]);
 	
-	return agent;
+	return queryAgent;
 };
 
-const createCloneIdentifierAgent = (): AxAgent<
-	{ nameWithOwner: string },
-	{ clone_required: boolean }
-> => {
-	return new AxAgent<
-		{ nameWithOwner: string },
-		{ clone_required: boolean }
-	>({
+const createCloneIdentifierAgent = (): ReturnType<typeof agent> => {
+	return agent(`"Identifies if the README.md for the given MCP server can be configured without building the code locally." nameWithOwner:string "GitHub repository name with owner" -> clone_required:boolean "Whether the repository must be cloned and built locally to use the MCP server."`, {
 		name: "Clone Identifier Agent",
 		description: "An AI Agent that retrieves a repositories readme from the given nameWithOwner and identifies whether the MCP server must be cloned and built locally to be used.",
-		signature: `"Identifies if the README.md for the given MCP server can be configured without building the code locally." nameWithOwner:string "GitHub repository name with owner" -> clone_required:boolean "Whether the repository must be cloned and built locally to use the MCP server."`,
 		functions: [getRepoReadme],
-	}, { debug: true }
-	);
+	});
 };
 
 // Create function processor for managing MCP-related functions
@@ -182,7 +167,17 @@ export const handler: vscode.ChatRequestHandler = async (
 	
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
-	provider.setOptions({ debug: true });
+	provider.setOptions(
+		{ 
+			debug: false, 
+			fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+				init!.headers = {
+					...init?.headers,
+					...copilot.headers,
+				};
+				return fetch(input, init);
+			} 
+	});
 
 	const session = await vscode.authentication.getSession(
 		GITHUB_AUTH_PROVIDER_ID,
@@ -318,14 +313,8 @@ export const handler: vscode.ChatRequestHandler = async (
 class GitHubSearchTool
 	implements vscode.LanguageModelTool<{ userQuery: string; }> {
 	private functionProcessor: AxFunctionProcessor;
-	private searchCoordinatorAgent: AxAgent<
-		{ originalUserMessage: string },
-		{ relevantRepositoryResults: any[] }
-	>;
-	private cloneIdentifierAgent: AxAgent<
-		{ nameWithOwner: string },
-		{ clone_required: boolean }
-	>;
+	private searchCoordinatorAgent: ReturnType<typeof agent>;
+	private cloneIdentifierAgent: ReturnType<typeof agent>;
 	
 	constructor(private readonly userQuery: string, private readonly stream: vscode.ChatResponseStream) {
 		this.userQuery = userQuery;
@@ -341,20 +330,24 @@ class GitHubSearchTool
 		this.searchCoordinatorAgent = this.createSearchCoordinatorAgent();
 	}
 	
-	private createSearchCoordinatorAgent(): AxAgent<
-		{ originalUserMessage: string },
-		{ relevantRepositoryResults: any[] }
-	> {
+	private createSearchCoordinatorAgent(): ReturnType<typeof agent> {
 		// Create query generator agent
 		const queryGeneratorAgent = createQueryGeneratorAgent();
-		
+		const copilot = CopilotChatProvider.getInstance();
+		const provider = copilot.provider;
+		outputLogger.info("headers: ", copilot.headers);
+		provider.setOptions({ debug: true, fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+			init!.headers = {
+				...init?.headers,
+				...copilot.headers,
+			};
+			return fetch(input, init);
+		} });
 		// Create the search and process function
 		const generateAndSearchRepos: AxFunction = {
 			name: "generateAndSearchRepos",
 			description: "Generate a search query and search for MCP repositories",
 			func: async (args: { originalUserMessage: string }) => {
-				const copilot = CopilotChatProvider.getInstance();
-				const provider = copilot.provider;
 				
 				// Use the query generator agent
 				const queryResult = await queryGeneratorAgent.forward(
@@ -385,15 +378,10 @@ class GitHubSearchTool
 		};
 		
 		// Create the coordinator agent with composition
-		return new AxAgent<
-			{ originalUserMessage: string },
-			{ relevantRepositoryResults: any[] }
-		>({
+		return agent(`originalUserMessage:string "The original user message that was sent to the agent." -> relevantRepositoryResults:json[] "Array of {Repository}"`,{
 			name: "Search Coordinator Agent",
 			description: "An AI Agent that coordinates the search for MCP servers using composed agents and functions.",
-			signature: `originalUserMessage:string "The original user message that was sent to the agent." -> relevantRepositoryResults:json[] "An array of repository results. Include all information in the response."`,
 			functions: [generateAndSearchRepos]
-			// Note: agents composition requires matching input/output types
 		});
 	}
 	
@@ -401,8 +389,18 @@ class GitHubSearchTool
 		this.stream.progress("Beginning search for installable MCP servers...");
 		const copilot = CopilotChatProvider.getInstance();
 		const provider = copilot.provider;
-		provider.setOptions({ debug: true });
-		outputLogger.debug("GitHubSearchTool invoked", { options });
+		provider.setOptions(
+		{ 
+			debug: false, 
+			fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+				init!.headers = {
+					...init?.headers,
+					...copilot.headers,
+				};
+				return fetch(input, init);
+			} 
+		});
+		outputLogger.info("GitHubSearchTool invoked", { options });
 		
 		try {
 			// Use the composed search coordinator agent
@@ -427,7 +425,7 @@ class GitHubSearchTool
 			}
 			
 			// Filter for installable repositories
-			const installableRepositories = [];
+			const installableRepositories:any = [];
 			for (const repo of repositoryResponse.relevantRepositoryResults) {
 				const cloneRequired = await this.cloneIdentifierAgent.forward(
 					provider,
@@ -486,23 +484,30 @@ export async function readmeExtractionRequest(readme: string) {
 	}
 	const copilot = CopilotChatProvider.getInstance();
 	const provider = copilot.provider;
-	provider.setOptions({ debug: false });
-	const details = await extractServerDetailsFromReadme(accessToken, readme, false);
-	if (details && !('error' in details) && ('name' in details)) {
-		return cloudMcpIndexer.transformPackageToInstallFormat(details);
-	}
-	outputLogger.warn("Failed to extract server details from README, falling back to old example dspy extraction", { errorDetails: details });
-	const gen = ax`
-		readme:${f.string('MCP server readme with instructions')} ->
-		name:${f.string('Package name')},
-		command:${f.string('Specifies the executable or interpreter to run. Prefer npx, docker, and uvx command, in that order.')},
-		arguments:${f.array(f.string('Package arguments and runtime arguments. These are the arguments that will be passed to the command when it is run.'))},
-		env:${f.json('Environment variables to set for the server process. Often includes configurable information such as API keys, hosts, ports, filesystem paths.')},
-		inputs:${f.array(f.json('User configurable server details extracted from the readme. Inputs can include api keys, filesystem paths that the user needs to configure, hostnames, passwords, and names of resources.'))}
-	`;
-	gen.setExamples(await dspyExamples());
+	provider.setOptions(
+		{ 
+			debug: false, 
+			fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+				init!.headers = {
+					...init?.headers,
+					...copilot.headers,
+				};
+				return fetch(input, init);
+			} 
+	});
 
-	const object = await gen.forward(
+	const extractor = ax(`
+		"Extracts the MCP server configuration from a README.md file and returns the necessary information to run it."
+		readme:string "README.md of MCP Server" ->
+		command:class "npx, docker, uvx",
+		name:string "Name of the MCP server package in the registry",
+		arguments:string[] "Arguments to pass to the MCP server command",
+		env:json "{}",
+		inputs:json[] "Array of { type, id, description, password }"
+	`);
+	extractor.setExamples(await dspyExamples());
+
+	const object = await extractor.forward(
 		provider,
 		{ readme },
 		{ stream: false }

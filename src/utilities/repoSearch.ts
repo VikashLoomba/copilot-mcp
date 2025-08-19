@@ -438,26 +438,6 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 		response.search.edges.forEach((edge: any) => {
 			if (checkInstallCommand(edge.node)) {
 				matchedResults.push(edge);
-				cloudMcpIndexer.sendIndexRequest({
-					repositoryUrl: edge.node.url,
-					serverName: edge.node.nameWithOwner,
-				}).catch(err => outputLogger.warn("Failed to send index request", err));
-			} else {
-				unmatchedResults.push(edge);
-				if (edge.node.readme && edge.node.readme.text) {
-					if (((edge.node.readme.text as string).match(/mcpServers/i))) {
-						cloudMcpIndexer.sendIndexRequest({
-							repositoryUrl: edge.node.url,
-							serverName: edge.node.nameWithOwner,
-						}).catch(err => outputLogger.warn("Failed to send index request", err));;
-					}
-					else if ((edge.node.readme.text as string).match(/claude mcp add/i)){
-						cloudMcpIndexer.sendIndexRequest({
-							repositoryUrl: edge.node.url,
-							serverName: edge.node.nameWithOwner,
-						}).catch(err => outputLogger.warn("Failed to send index request", err));;
-					}
-				}
 			}
 		});
 
@@ -470,7 +450,6 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 		// Transform the results
 		const transformedResults = sortedEdges.map((edge: any) => {
 			const repo = edge.node;
-			const hasInstallCommand = checkInstallCommand(repo);
 			
 			return {
 				fullName: repo.nameWithOwner,
@@ -484,7 +463,7 @@ export async function searchMcpServers2(payload: searchWithReadme) {
 				description: repo.description,
 				url: repo.url,
 				readme: repo.readme ? repo.readme.text : null,
-				hasInstallCommand, // Include this so UI can show a badge or highlight
+				hasInstallCommand: true, // Include this so UI can show a badge or highlight
 			};
 		});
 

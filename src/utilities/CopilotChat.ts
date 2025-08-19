@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { AxAIOpenAIBase,  } from "@ax-llm/ax";
+import { ai, AxAI, AxAIOpenAIModel,  } from "@ax-llm/ax";
 import { logError } from '../telemetry/standardizedTelemetry';
 
 const GITHUB_AUTH_PROVIDER_ID = "github";
@@ -23,27 +23,32 @@ export class CopilotChatProvider {
 	private _baseModel = ""; // Will be set dynamically from available models
 	public modelDetails: any = null;
 	private _modelCapabilities: any = null; // Store model capabilities
-	private _provider!: AxAIOpenAIBase<"gpt-4.1", "text-embedding-ada-002">;
+	private _provider!: AxAI;
 
 	private _initialized = false;
 
 	public get provider() {
 		if (!this._provider) {
-			this.provider = new AxAIOpenAIBase({
+			this.provider = ai({
+				name: 'openai',
 				apiKey: this.copilotToken!,
 				apiURL: this.baseUrl,
-				supportFor: {
-					functions: true,
-					hasThinkingBudget: false,
-					streaming: false
+				options: {
+					fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+						init!.headers = {
+							...init?.headers,
+							...this.headers,
+						};
+						return fetch(input, init);
+					}
 				},
 				config: {
-					model: "gpt-4.1",
-					embedModel: "text-embedding-ada-002",
+					model: AxAIOpenAIModel.GPT5Mini,
+					
 				},
-				modelInfo: [{ name: "gpt-4.1" }],
+				
 			});
-			this.provider.setHeaders(() => Promise.resolve(this.headers));
+			
 		}
 		return this._provider;
 	}
@@ -121,7 +126,6 @@ export class CopilotChatProvider {
 		// Set initialized flag to true
 		this._initialized = true;
 		console.log("CopilotChatProvider initialization complete");
-		vscode.window.showInformationMessage("Copilot MCP initialized");
 	}
 
 	private async getCopilotToken(

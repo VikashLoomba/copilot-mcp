@@ -12,7 +12,7 @@
   },
   "displayName": "Copilot MCP",
   "description": "VSCode extension that allows you to search, manage, and install open-source MCP servers",
-  "version": "0.0.68",
+  "version": "0.0.70",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.101.0"
@@ -189,15 +189,15 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.14",
-    "@ax-llm/ax": "^12.0.23",
-    "@ax-llm/ax-ai-sdk-provider": "^12.0.23",
+    "@ax-llm/ax": "^14.0.16",
+    "@ax-llm/ax-ai-sdk-provider": "^14.0.16",
     "@octokit/rest": "^21.1.1",
     "@opentelemetry/api-logs": "^0.200.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.201.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.200.0",
     "@vscode/chat-extension-utils": "^0.0.0-alpha.5",
     "@vscode/extension-telemetry": "^1.0.0",
-    "ai": "^4.3.15",
+    "ai": "^5.0.17",
     "octokit": "^4.1.3",
     "vscode-messenger": "^0.5.1",
     "zod": "^3.24.4"

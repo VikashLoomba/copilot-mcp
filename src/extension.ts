@@ -50,7 +50,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push({ dispose: () => outputLogger.dispose() });
 	outputLogger.info("Copilot MCP extension activation started");
 
-	const Octokit = await import("@octokit/rest");
 	context.subscriptions.push(logger, { dispose: shutdownLogs });
 	context.subscriptions.push(telemetryReporter);
 	// console.dir(await vscode.authentication.getAccounts('github'), {depth: null});
@@ -60,17 +59,11 @@ export async function activate(context: vscode.ExtensionContext) {
 		SCOPES,
 		{ createIfNone: true }
 	);
-	outputLogger.info("GitHub session obtained", { userId: session.account.id });
 	
-	// Octokit instance created but not used in this activation function
-	// const octokit = new Octokit.Octokit({
-	// 	auth: session.accessToken,
-	// });
-	
-	outputLogger.info("Initializing Copilot Provider");
+	outputLogger.info("Initializing Copilot MCP LM Provider");
 	const copilot = await CopilotChatProvider.initialize(context);
 	const models = await copilot.getModels();
-	outputLogger.debug("Available Copilot models", models.map((m: any) => m.id));
+	outputLogger.info("Available Copilot models", models.map((m: any) => m.id));
 	
 	// Initialize standardized telemetry context  
 	const extensionVersion = vscode.extensions.getExtension('AutomataLabs.copilot-mcp')?.packageJSON?.version || 'unknown';
@@ -115,9 +108,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputLogger.debug("Creating CopilotMcpViewProvider");
 	const provider = new CopilotMcpViewProvider(
 		context.extensionUri,
-		session.accessToken,
-		telemetryReporter,
-		session
+		session.accessToken
 	);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(

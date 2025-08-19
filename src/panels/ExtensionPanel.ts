@@ -1,14 +1,9 @@
 import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { getReadme, searchMcpServers, searchMcpServers2, type McpServerResult } from "../utilities/repoSearch";
+import { searchMcpServers2 } from "../utilities/repoSearch";
 import { type TelemetryReporter } from "@vscode/extension-telemetry";
-import { CopilotChatProvider } from "../utilities/CopilotChat";
-import { dspyExamples } from "../utilities/const";
-import { AxGen } from "@ax-llm/ax";
 import { openMcpInstallUri, readmeExtractionRequest } from "../McpAgent";
-import { getLogger } from "../telemetry";
-import { cloudMcpIndexer } from "../utilities/cloudMcpIndexer";
 import { 
 	logWebviewSearch, 
 	logWebviewInstallAttempt, 
@@ -27,15 +22,12 @@ import {
 	aiAssistedSetupType,
 	deleteServerType,
 	getMcpConfigType,
-	getReadmeType,
 	searchServersType,
 	sendFeedbackType,
 	updateMcpConfigType,
 	updateServerEnvVarType,
 	cloudMCPInterestType,
-	checkCloudMcpType,
 } from "../shared/types/rpcTypes";
-import { outputLogger } from "../utilities/outputLogger";
 
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
@@ -88,10 +80,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
-		private readonly _accessToken: string,
-		private readonly _telemetryReporter: TelemetryReporter,
-		private readonly _session: vscode.AuthenticationSession
-	) {}
+		private readonly _accessToken: string	) {}
 
 	resolveWebviewView(
 		webviewView: vscode.WebviewView,
@@ -123,7 +112,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			};
 		});
 
-		messenger.onRequest(getMcpConfigType, async (payload) => {
+		messenger.onRequest(getMcpConfigType, async () => {
 			// Ensure "mcp-server-time" is handled correctly if it's a global temporary server
 			await deleteServer(webviewView, "mcp-server-time", true); // Pass a flag to suppress info for this specific server
 			const servers = await getAllServers();
@@ -255,7 +244,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			}
 		});
 
-		messenger.onNotification(sendFeedbackType, async (payload) => {
+		messenger.onNotification(sendFeedbackType, async () => {
 			// Log feedback submission with standardized telemetry
 			logWebviewFeedbackSent('general');
 			vscode.window.showInformationMessage(
@@ -300,12 +289,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				);
 			}
 		});
-		// if(vscode.)
-		// vscode.window.showInformationMessage("Help shape Copilot MCP Pro → 60-sec poll", {modal: true, detail: 'Let us know what features you would want to see from a Pro plan'}, "Cloud hosting ☁️", "Team sharing 🤝", "Enterprise security 🔒")
-		// .then((response?: string) => {
-		//     getLogger().logUsage('pro.features.poll', {response, accountId: this._session.account.id,
-		//         accountLabel: this._session.account.label,});
-		// });
 
 		// All message handling is now done through vscode-messenger
 		// No need for legacy onDidReceiveMessage handler
@@ -366,10 +349,10 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	) {
 		return await vscode.window.withProgress(
 			{
-				title: "Installing MCP server with Copilot...",
+				title: "Installing MCP server with Copilot",
 				location: vscode.ProgressLocation.Notification,
 			},
-			async (progress, token) => {
+			async (progress) => {
 				try {
 					progress.report({
 						message: `Adding server to config...`,
@@ -417,35 +400,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	}
 }
 
-async function parseChatResponse(
-	chatResponse: vscode.LanguageModelChatResponse
-) {
-	let accumulatedResponse = "";
-
-	for await (const fragment of chatResponse.text) {
-		accumulatedResponse += fragment;
-
-		// if the fragment is a }, we can try to parse the whole line
-		if (fragment.includes("}")) {
-			try {
-				const parsedResponse = JSON.parse(accumulatedResponse);
-				return parsedResponse;
-			} catch (e) {
-				// do nothing
-			}
-		}
-		// return accumulatedResponse;
-	}
-	console.log("accumulatedResponse", accumulatedResponse);
-	if (accumulatedResponse.startsWith("```json")) {
-		const jsonString = accumulatedResponse
-			.replace("```json", "")
-			.replace("```", "");
-		const parsedResponse = JSON.parse(jsonString);
-		return parsedResponse;
-	}
-	return accumulatedResponse;
-}
 
 // This function is deprecated by direct use of getAllServers in the getMcpConfigType handler
 // and onDidChangeConfiguration. The webview will be updated with the full merged list.
