@@ -27,6 +27,7 @@ import {
 	updateMcpConfigType,
 	updateServerEnvVarType,
 	cloudMCPInterestType,
+	previewReadmeType,
 } from "../shared/types/rpcTypes";
 
 // Helper function to read servers from .vscode/mcp.json
@@ -93,9 +94,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		messenger.onRequest(searchServersType, async (payload) => {
 			const searchResponse = await searchMcpServers2({
 				query: payload.query,
-				endCursor: payload.endCursor,
-				startCursor: payload.startCursor,
-				direction: payload.direction,
+				page: payload.page,
+				language: payload.language,
+				sort: payload.sort,
 			});
 			const results = searchResponse?.results || [];
 			const totalCount = searchResponse?.totalCount || 0;
@@ -259,12 +260,33 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				properties: {
 					repoName: payload.repoName,
 					repoOwner: payload.repoOwner,
+					repoUrl: payload.repoUrl,
 					timestamp: payload.timestamp,
 				},
 			});
 
-			await vscode.env.openExternal(vscode.Uri.parse("https://cloudmcp.run/pricing?utm_source=copilot-mcp"));
+			// Encode the repository URL for the query parameter
+			const encodedRepoUrl = encodeURIComponent(payload.repoUrl);
+			const deployUrl = `https://cloudmcp.run/dashboard/deploy/easy?q=${encodedRepoUrl}&utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy`;
 			
+			// Open external URL with proper referrer tracking
+			await vscode.env.openExternal(vscode.Uri.parse(deployUrl));
+			
+		});
+
+		messenger.onNotification(previewReadmeType, async (payload) => {
+			// Create a temporary markdown file with the README content
+			const tempUri = vscode.Uri.parse(`untitled:${payload.fullName}-README.md`);
+			const document = await vscode.workspace.openTextDocument(tempUri);
+			const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+			
+			// Insert the README content
+			await editor.edit(editBuilder => {
+				editBuilder.insert(new vscode.Position(0, 0), `# ${payload.fullName}\n\n${payload.readme}`);
+			});
+			
+			// Show the markdown preview
+			await vscode.commands.executeCommand('markdown.showPreview', tempUri);
 		});
 
 		webviewView.webview.options = {

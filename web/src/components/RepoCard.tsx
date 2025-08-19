@@ -1,7 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import {
   Card,
   CardContent,
@@ -15,7 +12,7 @@ import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
-import { aiAssistedSetupType, cloudMCPInterestType } from "../../../src/shared/types/rpcTypes";
+import { aiAssistedSetupType, cloudMCPInterestType, previewReadmeType } from "../../../src/shared/types/rpcTypes";
 interface CloudMcpCheckResult {
   success: boolean;
   exists: boolean;
@@ -59,13 +56,24 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
   };
 
   const handleCloudMCPClick = () => {
-    // Send telemetry event
+    // Send telemetry event with repo URL
     messenger.sendNotification(cloudMCPInterestType, {
       type: 'extension'
     }, {
       repoName: repo.fullName,
-      repoOwner: repo.owner,
+      repoOwner: repo.author.name,
+      repoUrl: repo.url,
       timestamp: new Date().toISOString()
+    });
+  };
+
+  const handlePreviewReadme = () => {
+    // Send message to extension to open README preview
+    messenger.sendNotification(previewReadmeType, {
+      type: 'extension'
+    }, {
+      fullName: repo.fullName,
+      readme: repo.readme || ''
     });
   };
 
@@ -149,41 +157,47 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             <span>Last Updated: {formatDate(repo.updatedAt)}</span>
           </div>
         </div>
-        <div>
-          <h4 className="text-xs font-semibold mb-1 flex items-center">
-            <BookText className="mr-1.5 h-4 w-4 " />
-            README Snippet:
-          </h4>
-          <div className="text-xs p-2 border rounded-md max-h-24 overflow-y-auto prose prose-sm">
-            { repo.readme ? (
-                <ReactMarkdown
-                  children={repo.readme}
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
-                />
-              ) : (
-                <p className="text-gray-500 italic">README unavailable</p>
-              )}
+        {repo.readme && (
+          <div className="flex items-center">
+            <BookText className="mr-1.5 h-4 w-4 text-purple-500" />
+            <button
+              onClick={() => handlePreviewReadme()}
+              className="text-xs text-blue-500 hover:text-blue-700 hover:underline cursor-pointer"
+            >
+              Preview README
+            </button>
           </div>
-        </div>
+        )}
       </CardContent>
       {!installError && (
         <CardFooter className="pt-2 pb-3 border-t space-x-2">
-          <Button
-            variant={"outline"}
-            onClick={handleInstallClick}
-            disabled={isInstalling || !repo.hasInstallCommand}
-            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isInstalling ? "Installing..." : "Install"}
-          </Button>
-          <Button
-            variant={"outline"}
-            onClick={handleCloudMCPClick}
-            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
-          >
-            Deploy on CloudMCP
-          </Button>
+          {repo.hasInstallCommand ? (
+            <>
+              <Button
+                variant={"outline"}
+                onClick={handleInstallClick}
+                disabled={isInstalling}
+                className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isInstalling ? "Installing..." : "Install"}
+              </Button>
+              <Button
+                variant={"outline"}
+                onClick={handleCloudMCPClick}
+                className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
+              >
+                Deploy on CloudMCP
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant={"outline"}
+              onClick={handleCloudMCPClick}
+              className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
+            >
+              Deploy on CloudMCP
+            </Button>
+          )}
         </CardFooter>
       )}
       {/* Red button to indicate install error with "Retry Install" text */}

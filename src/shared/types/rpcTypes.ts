@@ -4,10 +4,11 @@ import {
 } from "vscode-messenger-common";
 
 export const searchServersType: RequestType<
-	{ query: string; endCursor?: string;
-	startCursor?: string;
-	direction?: 'forward' | 'backward'; },
-	{ results: any[]; totalCount: number; pageInfo: {startCursor?: string; endCursor?: string; hasNextPage?: boolean; hasPreviousPage?: boolean;} }
+	{ query: string; 
+	page?: number;
+	language?: 'javascript' | 'python';
+	sort?: 'stars' | 'name' | 'updated' | 'created'; },
+	{ results: any[]; totalCount: number; pageInfo: {hasNextPage?: boolean; hasPreviousPage?: boolean; currentPage?: number; perPage?: number;} }
 > = { method: "search" };
 
 export const getReadmeType: RequestType<
@@ -38,6 +39,7 @@ export const sendFeedbackType: NotificationType<{ feedback: string }> = { method
 export const cloudMCPInterestType: NotificationType<{ 
 	repoName: string; 
 	repoOwner: string;
+	repoUrl: string;
 	timestamp: string;
 }> = { method: "cloudMCPInterest" };
 
@@ -47,3 +49,8 @@ export const checkCloudMcpType: RequestType<{
 	repoFullName?: string;
 	owner: string;
 }, CloudMcpCheckResult> = { method: "checkCloudMcp" };
+
+export const previewReadmeType: NotificationType<{ 
+	fullName: string;
+	readme: string;
+}> = { method: "previewReadme" };

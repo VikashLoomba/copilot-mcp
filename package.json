@@ -10,8 +10,8 @@
     "url": "https://github.com/vikashloomba/copilot-mcp",
     "type": "git"
   },
-  "displayName": "Copilot MCP",
-  "description": "VSCode extension that allows you to search, manage, and install open-source MCP servers",
+  "displayName": "MCP tools in Copilot - Copilot MCP",
+  "description": "Search, manage, and install open-source MCP servers",
   "version": "0.0.70",
   "icon": "logo.png",
   "engines": {
@@ -198,6 +198,7 @@
     "@vscode/chat-extension-utils": "^0.0.0-alpha.5",
     "@vscode/extension-telemetry": "^1.0.0",
     "ai": "^5.0.17",
+    "axios": "^1.11.0",
     "octokit": "^4.1.3",
     "vscode-messenger": "^0.5.1",
     "zod": "^3.24.4"
