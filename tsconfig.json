@@ -1,7 +1,7 @@
 {
 	"compilerOptions": {
-		"module": "Node16",
-		"moduleResolution": "Node16",
+		"module": "CommonJS",
+		"moduleResolution": "node",
 		"target": "ES2022",
 		"lib": [
 			"ES2022",
@@ -10,11 +10,14 @@
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": true,   /* enable all strict type-checking options */
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
 		/* Additional Checks */
 		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
 		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
 	},
-	"include": ["@ax-llm/ax"],
+	"include": ["src/**/*"],
     "exclude": ["web", "node_modules", ".vscode-test"]
 }
