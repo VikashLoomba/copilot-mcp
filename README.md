@@ -1,85 +1,90 @@
 <div align="center">
-<h1>Copilot MCP Search for VSCode</h1> 
+<h1>Copilot MCP Search for VS Code</h1>
 </div>
+
 <div align="center">
-  <a href="vscode://AutomataLabs.copilot-mcp"><img src="https://badgen.net/vs-marketplace/i/AutomataLabs.copilot-mcp?icon=visualstudio" /></a>
-
-[![](https://dcbadge.limes.pink/api/server/https://discord.gg/cloudmcp)](https://discord.gg/cloudmcp)
-
+  <a href="vscode://AutomataLabs.copilot-mcp">
+    <img src="https://badgen.net/vs-marketplace/i/AutomataLabs.copilot-mcp?icon=visualstudio" />
+  </a>
+  <br />
+  <a href="https://discord.gg/cloudmcp">
+    <img src="https://dcbadge.limes.pink/api/server/https://discord.gg/cloudmcp" />
+  </a>
 </div>
-<div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0;">
-  <img width="800" alt="image" src="https://automatalabs.io/demo.gif" />
-</div>
+
+<!-- ✨ New: value-first CTA block -->
 <div align="center">
+  
+  > **Want remote MCP in ~30s?** Try **Cloud MCP** — paste a URL → OAuth → done.  
+  > Works with Copilot & Claude (no keys, no terminal).  
+  > **Get started at** [cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)
+</div>
 
+<div align="center">
+  <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0;">
+    <img width="800" alt="image" src="https://automatalabs.io/demo.gif" />
+  </div>
+</div>
+
+<div align="center">
+  
 ![Version](https://img.shields.io/badge/version-0.0.70-blue.svg?cacheSeconds=2592000)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![VSCode Extension](https://img.shields.io/badge/VSCode-Extension-blue.svg?logo=visual-studio-code)](https://code.visualstudio.com/api/references/extension-guidelines)
 [![MCP Client](https://img.shields.io/badge/MCP-Client-green.svg)](https://modelcontextprotocol.io/clients)
 
-
-
 </div>
 
-> A powerful VSCode extension that allows you to discover and install open-source MCP servers, enabling seamless integration between MCP tool servers and GitHub Copilot Chat. Join the growing ecosystem of interoperable AI applications with flexible integration options.
+> A powerful VS Code extension that lets you **discover & install** open‑source MCP servers and expose their tools to **GitHub Copilot Chat**.
 
 ## ✨ Features
-
-- 🔧 **MCP Server Management**: Connect and manage multiple MCP servers through an intuitive UI
-- 🚀 **Copilot Integration**: Expose MCP tools directly to GitHub Copilot Chat
-- 🎯 **Server Discovery**: Automatically discover and search for open-source MCP servers
-- ⚡ **Server Health Monitoring**: Real-time monitoring of MCP server status and connections
-- 🔄 **Automatic Connection Management**: Seamless handling of MCP server connections and reconnections
-
+- 🔧 **MCP Server Management** – connect/manage multiple servers via an intuitive UI  
+- 🚀 **Copilot Integration** – expose MCP tools directly to Copilot Chat  
+- 🎯 **Server Discovery** – automatically discover searchable open‑source servers  
+- ⚡ **Server Health Monitoring** – real‑time status & connection checks  
+- 🔄 **Auto‑Reconnect** – resilient MCP connections
 
 ## 📦 Installation
+1) Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AutomataLabs.copilot-mcp).  
+2) Open **MCP Servers** in the Activity Bar, or configure in **Settings**.
 
-1. Install the [extension](https://marketplace.visualstudio.com/items?itemName=AutomataLabs.copilot-mcp) from the VSCode Marketplace
-2. Configure your MCP servers through the extension settings
-3. Start using GitHub Copilot Chat with your MCP tools!
+<!-- ✨ New: Remote option -->
+### Optional: Remote MCP (no local setup)
+If you don’t want to run servers locally, use **Cloud MCP** (remote, OAuth‑only).  
+Paste the MCP URL into Copilot/Claude and you’re done:
+- https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp
 
 ## 🛠️ Configuration
-
-You can configure your MCP servers in the UI or in VSCode settings.
-
-In the UI, look for the "MCP Servers" button in the activity bar.
+Configure via the UI or VS Code settings. Look for the **MCP Servers** icon in the Activity Bar.
 
 ## 🚀 Usage
+1) Open the **MCP Servers** view  
+2) Connect or search for servers  
+3) Use Copilot Chat with your newly added tools
 
-1. Open the MCP Servers view from the VSCode activity bar
-2. Manage your configured MCP Servers from the panel
-3. Search and discover new open-source MCP Servers
+<!-- ✨ New: Discovery + Remote deploy hint -->
+> Tip: When a server supports `npx`/`uvx`, the **Server Discovery** panel shows a **“Deploy via Cloud MCP”** option so you can run it remotely without installing anything.
 
 ## 🔗 Requirements
-
-- VSCode 
+- VS Code
 - GitHub Copilot Chat extension
 
 ## 🌟 Benefits
-
-- Enable Copilot to use custom context and tools through MCP
-- Join the growing ecosystem of interoperable AI applications
-- Support local-first AI workflows
-- Flexible integration options for your development workflow
+- Give Copilot standardized tools via MCP
+- Local or remote workflows (Cloud MCP)
+- Join a growing, interoperable ecosystem
 
 ## 👥 Contributing
-
-Contributions, issues and feature requests are welcome!
-Feel free to check the [issues page](https://github.com/VikashLoomba/copilot-mcp/issues).
+PRs and feature requests welcome! See [issues](https://github.com/VikashLoomba/copilot-mcp/issues).
 
 ## ✍️ Author
-
-**Vikash Loomba**
-
-* Website: https://automatalabs.io
-* Github: [@vikashloomba](https://github.com/vikashloomba)
+**Vikash Loomba**  
+Website: https://automatalabs.io  
+GitHub: [@vikashloomba](https://github.com/vikashloomba)
 
 ## 📝 License
-
-Copyright © 2024 [Vikash Loomba](https://automatalabs.io).
-
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+GPL‑3.0 — see [LICENSE](LICENSE).
 
 ---
 
-_Part of the [MCP Client Ecosystem](https://modelcontextprotocol.io/clients) - Enabling interoperable AI tools for developers_ ⭐️
+_Part of the [MCP Client Ecosystem](https://modelcontextprotocol.io/clients)_
