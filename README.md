@@ -52,7 +52,7 @@
 ### Optional: Remote MCP (no local setup)
 If you don’t want to run servers locally, use **Cloud MCP** (remote, OAuth‑only).  
 Paste the MCP URL into Copilot/Claude and you’re done:
-- https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp
+- **Learn More:** [https://cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)
 
 ## 🛠️ Configuration
 Configure via the UI or VS Code settings. Look for the **MCP Servers** icon in the Activity Bar.
