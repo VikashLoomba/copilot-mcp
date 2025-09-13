@@ -10,9 +10,9 @@
     "url": "https://github.com/vikashloomba/copilot-mcp",
     "type": "git"
   },
-  "displayName": "MCP tools in Copilot - Copilot MCP",
+  "displayName": "Copilot MCP: Find & Install MCP Servers for VSCode",
   "description": "Search, manage, and install open-source MCP servers",
-  "version": "0.0.80",
+  "version": "0.0.81",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.101.0"
@@ -103,10 +103,6 @@
       }
     ],
     "commands": [
-      {
-        "command": "copilot-mcp.helloWorld",
-        "title": "Hello World"
-      },
       {
         "command": "copilot-mcp.showLogs",
         "title": "Show Copilot MCP Logs",
