@@ -1,5 +1,24 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.80 – Official MCP Registry Search + Direct Installs 🎉
+*(September 12 2025)*
+
+Discover and install MCP servers faster and more reliably — now with first‑class support for the Official MCP Registry.
+
+What’s new
+
+- Official MCP Registry provider: Search the public, curated MCP registry right inside the extension. The registry is now the default provider, with the option to switch back to GitHub anytime.
+- Direct installs from the registry: Install local packages (npm, PyPI, etc.) or remote endpoints with one click — no copy/paste or manual config. We use the registry’s metadata to set up the right command and arguments automatically.
+- Smart, secure prompts: When a server needs API keys or other values, you’ll be prompted at install time. Secrets are captured securely, and missing values are requested so you’re never left guessing.
+- Remote server support: Add remote MCP servers by URL from the registry, including headers for authentication when needed.
+- Reliability improvements: Ensures the correct package spec is included for installs (so commands like npx/uvx “just work”), fixes for remote‑only servers, and other polish.
+
+We hope this makes discovering and using MCP servers simpler, faster, and more dependable in VSCode. Let us know what you’d like to see next!
+
+*Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.80) – Deploy Remote MCP servers in seconds*
+
+
+
 ## Version 0.0.70 – GPT-5-mini Powered Installation & Enhanced Reliability! 🚀
 *(August 19 2025)*
 
