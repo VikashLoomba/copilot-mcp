@@ -28,7 +28,10 @@ import {
 	updateServerEnvVarType,
 	cloudMCPInterestType,
 	previewReadmeType,
+    installFromConfigType,
+    registrySearchType,
 } from "../shared/types/rpcTypes";
+import axios from "axios";
 
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
@@ -177,6 +180,38 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				
 				// Notify webview about the error
 				return false;
+			}
+		});
+
+		// Direct install path from structured config (Official Registry results)
+		messenger.onRequest(installFromConfigType, async (payload) => {
+			try {
+				const cmdResponse = await openMcpInstallUri(payload as any);
+				return !!(cmdResponse && (cmdResponse as any).success);
+			} catch (error) {
+				console.error("Error during direct install: ", error);
+				return false;
+			}
+		});
+
+		// Official Registry search proxied via extension (avoids webview CORS)
+		messenger.onRequest(registrySearchType, async (payload) => {
+			try {
+				const params: Record<string, any> = {
+					version: 'latest',
+					limit: payload.limit ?? 10,
+					search: payload.search,
+				};
+				if (payload.cursor) params.cursor = payload.cursor;
+				const res = await axios.get('https://registry.modelcontextprotocol.io/v0/servers', { params });
+				const data = res?.data ?? {};
+				return {
+					servers: data.servers ?? [],
+					metadata: data.metadata ?? {},
+				};
+			} catch (error) {
+				console.error('Registry search failed', error);
+				return { servers: [], metadata: {} };
 			}
 		});
 
@@ -352,16 +387,16 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
           <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https: data:;">
-            <link rel="stylesheet" type="text/css" href="${stylesUri}">
-            <title>Hello World</title>
-          </head>
-          <body>
-            <div id="root"></div>
-            <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
-          </body>
-        </html>
-      `;
+			<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https: data:; connect-src ${webview.cspSource} https:;">
+			<link rel="stylesheet" type="text/css" href="${stylesUri}">
+			<title>Hello World</title>
+		  </head>
+		  <body>
+			<div id="root"></div>
+			<script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+		  </body>
+		</html>
+	  `;
 	}
 
 	public async vscodeLMResponse(

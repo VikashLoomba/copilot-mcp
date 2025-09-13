@@ -54,3 +54,20 @@ export const previewReadmeType: NotificationType<{
 	fullName: string;
 	readme: string;
 }> = { method: "previewReadme" };
+
+// Direct installation from a structured config (used by Official Registry results)
+export const installFromConfigType: RequestType<{
+    name: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    inputs?: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }>;
+    url?: string; // for remote installs
+    headers?: Array<{ name: string; value: string }>; // for remote installs with headers
+}, boolean> = { method: "installFromConfig" };
+
+// Official Registry search (proxied via extension to avoid CORS)
+export const registrySearchType: RequestType<
+    { search: string; limit?: number; cursor?: string },
+    { servers: any[]; metadata: { next_cursor?: string; count?: number } }
+> = { method: "registrySearch" };
