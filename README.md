@@ -79,7 +79,7 @@ PRs and feature requests welcome! See [issues](https://github.com/VikashLoomba/c
 
 ## ✍️ Author
 **Vikash Loomba**  
-Website: https://automatalabs.io  
+Website: [https://cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)  
 GitHub: [@vikashloomba](https://github.com/vikashloomba)
 
 ## 📝 License
