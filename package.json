@@ -10,7 +10,7 @@
     "url": "https://github.com/vikashloomba/copilot-mcp",
     "type": "git"
   },
-  "displayName": "Copilot MCP - Find and install MCP servers",
+  "displayName": "Copilot MCP - Find and install open-source MCP servers",
   "description": "Search, manage, and install open-source MCP servers",
   "version": "0.0.82",
   "icon": "logo.png",
