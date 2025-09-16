@@ -300,9 +300,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				},
 			});
 
-			// Encode the repository URL for the query parameter
-			const encodedRepoUrl = encodeURIComponent(payload.repoUrl);
-			const deployUrl = `https://cloudmcp.run/dashboard/deploy/easy?q=${encodedRepoUrl}&utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy`;
+			// Redirect to the main CloudMCP dashboard with tracking parameters
+			const deployUrl = 'https://cloudmcp.run/dashboard?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy';
 			
 			// Open external URL with proper referrer tracking
 			await vscode.env.openExternal(vscode.Uri.parse(deployUrl));
