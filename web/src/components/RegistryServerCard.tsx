@@ -12,43 +12,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
 import { installFromConfigType } from "../../../src/shared/types/rpcTypes";
-
-type RegistryPackage = {
-  registry_type?: string;
-  identifier?: string;
-  version?: string;
-  runtime_hint?: string;
-  runtime_arguments?: Array<any> | null;
-  package_arguments?: Array<any> | null;
-  environment_variables?: Array<any> | null;
-  transport?: { type?: string } | null;
-};
-
-type RegistryRemote = {
-  type?: string;
-  url: string;
-  headers?: Array<{
-    name?: string;
-    value?: string;
-    description?: string;
-    is_secret?: boolean;
-    is_required?: boolean;
-  }> | null;
-};
+import type {
+  RegistryKeyValueInput,
+  RegistryPackage,
+  RegistryServer,
+  RegistryServerResponse,
+  RegistryTransport,
+} from "@/types/registry";
 
 interface RegistryServerCardProps {
-  server: any;
+  serverResponse: RegistryServerResponse;
 }
 
-const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
+const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse }) => {
   const vscodeApi = useVscodeApi();
   const messenger = useMemo(() => new Messenger(vscodeApi), [vscodeApi]);
   const [isInstallingLocal, setIsInstallingLocal] = useState(false);
   const [isInstallingRemote, setIsInstallingRemote] = useState(false);
-  const packages: RegistryPackage[] = server?.packages || [];
-  const remotes: RegistryRemote[] = server?.remotes || [];
-  const hasLocal = Array.isArray(packages) && packages.length > 0;
-  const hasRemote = Array.isArray(remotes) && remotes.length > 0;
+  const server = (serverResponse?.server ?? serverResponse) as RegistryServer | undefined;
+  const packages: RegistryPackage[] = Array.isArray(server?.packages) ? server?.packages ?? [] : [];
+  const remotes: RegistryTransport[] = Array.isArray(server?.remotes)
+    ? (server?.remotes ?? []).filter((r): r is RegistryTransport => typeof r?.url === 'string' && r.url.length > 0)
+    : [];
+  const hasLocal = packages.length > 0;
+  const hasRemote = remotes.length > 0;
 
   // Prefer stdio package for default selection
   const defaultPackage = packages.find((p) => p?.transport?.type === 'stdio') || packages[0];
@@ -58,6 +45,27 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
   useEffect(() => {
     messenger.start();
   }, [messenger]);
+
+  useEffect(() => {
+    if (!packages.find((p) => p.identifier === selectedPackageId)) {
+      setSelectedPackageId(defaultPackage?.identifier);
+    }
+  }, [packages, defaultPackage?.identifier, selectedPackageId]);
+
+  useEffect(() => {
+    if (!hasRemote) {
+      if (selectedRemoteIdx !== undefined) setSelectedRemoteIdx(undefined);
+      return;
+    }
+    const currentIndex = Number(selectedRemoteIdx ?? '0');
+    if (
+      Number.isNaN(currentIndex) ||
+      currentIndex < 0 ||
+      currentIndex >= remotes.length
+    ) {
+      setSelectedRemoteIdx('0');
+    }
+  }, [hasRemote, remotes, selectedRemoteIdx]);
 
   const findSelectedPackage = (): RegistryPackage | undefined =>
     packages.find((p) => p.identifier === selectedPackageId);
@@ -74,8 +82,8 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
         const t = a?.type as string | undefined;
         const name = a?.name as string | undefined;
         const value = a?.value as string | undefined;
-        const valueHint = a?.value_hint as string | undefined;
-        const isSecret = !!a?.is_secret;
+        const valueHint = (a?.valueHint ?? a?.default) as string | undefined;
+        const isSecret = !!a?.isSecret;
         const description = a?.description as string | undefined;
 
         if (t === 'positional') {
@@ -103,19 +111,19 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
         }
       }
     };
-    pushArgList(pkg?.runtime_arguments ?? undefined);
-    pushArgList(pkg?.package_arguments ?? undefined);
+    pushArgList(pkg?.runtimeArguments ?? undefined);
+    pushArgList(pkg?.packageArguments ?? undefined);
     return { args, inputs: argInputs };
   };
 
   const buildEnvAndInputs = (pkg?: RegistryPackage) => {
     const env: Record<string, string> = {};
     const inputs: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }>= [];
-    if (Array.isArray(pkg?.environment_variables)) {
-      for (const v of pkg!.environment_variables!) {
+    if (Array.isArray(pkg?.environmentVariables)) {
+      for (const v of pkg!.environmentVariables!) {
         const key = v?.name as string | undefined;
-        const isSecret = !!v?.is_secret;
-        const def = v?.default as string | undefined;
+        const isSecret = !!v?.isSecret;
+        const def = (v?.value ?? v?.default) as string | undefined;
         const description = v?.description as string | undefined;
         if (!key) continue;
         // If no default, always prompt. Use password for secrets
@@ -132,8 +140,8 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
 
   const resolveCommand = (pkg?: RegistryPackage): { command?: string; unsupported?: boolean } => {
     if (!pkg) return { command: undefined };
-    if (pkg.runtime_hint) return { command: pkg.runtime_hint };
-    const type = (pkg.registry_type || '').toLowerCase();
+    if (pkg.runtimeHint) return { command: pkg.runtimeHint };
+    const type = (pkg.registryType || '').toLowerCase();
     if (type === 'npm') return { command: 'npx' };
     if (type === 'pypi') return { command: 'uvx' };
     if (type === 'oci') return { command: 'docker' };
@@ -190,43 +198,79 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
     try {
       const headerInputs: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }> = [];
       const headers: Array<{ name: string; value: string }> = [];
-      const addInput = (id: string, description?: string, password?: boolean) => {
-        // Avoid duplicates
-        if (!headerInputs.find((i) => i.id === id)) headerInputs.push({ type: 'promptString', id, description, password });
-      };
       const sanitizeId = (s: string) => s.replace(/[^a-zA-Z0-9_]+/g, '_');
 
-      if (Array.isArray(remote.headers)) {
-        for (const h of remote.headers) {
-          const name = h.name || '';
-          let value = h.value || '';
-          const desc = h.description || undefined;
-          const isSecret = !!h.is_secret;
+      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-          // Find placeholders like {var}
-          const placeholderRegex = /\{([^}]+)\}/g;
-          const matches = [...value.matchAll(placeholderRegex)].map(m => m[1]);
-          if (matches.length > 0) {
-            for (const id of matches) addInput(id, desc, isSecret);
-            // Replace {id} with ${input:id}
-            value = value.replace(placeholderRegex, (_, g1) => `\${input:${g1}}`);
-          } else if (isSecret || !value) {
-            // Secret OR missing value -> prompt
-            const base = name ? sanitizeId(name) : 'value';
-            const id = `header_${base}`;
-            addInput(id, desc, !!isSecret);
-            value = `\${input:${id}}`;
+      if (Array.isArray(remote.headers)) {
+        for (const rawHeader of remote.headers as RegistryKeyValueInput[]) {
+          const name = rawHeader.name?.trim();
+          if (!name) continue;
+          const desc = rawHeader.description || undefined;
+          const isSecret = !!rawHeader.isSecret;
+          const isRequired = !!rawHeader.isRequired;
+          const variableRecord = rawHeader.variables && typeof rawHeader.variables === 'object'
+            ? rawHeader.variables
+            : {};
+          const template = (rawHeader.value ?? rawHeader.default ?? '') as string;
+          const placeholders = new Set<string>();
+
+          for (const key of Object.keys(variableRecord)) {
+            if (key) placeholders.add(key);
           }
 
-          headers.push({ name, value });
+          const placeholderPattern = /\{([^{}]+)\}|\$\{([^{}]+)\}/g;
+          let match: RegExpExecArray | null;
+          while ((match = placeholderPattern.exec(template)) !== null) {
+            const key = (match[1] ?? match[2])?.trim();
+            if (key) placeholders.add(key);
+          }
+
+          let value = template;
+          const ensureInput = (id: string, descriptionText?: string, password?: boolean) => {
+            if (!id) return;
+            if (!headerInputs.some((i) => i.id === id)) {
+              headerInputs.push({ type: 'promptString', id, description: descriptionText, password });
+            }
+          };
+
+          for (const id of placeholders) {
+            const variable = variableRecord[id];
+            const descriptionText = variable?.description || desc;
+            const password = variable?.isSecret ?? isSecret;
+            ensureInput(id, descriptionText, password);
+            const escapedId = escapeRegExp(id);
+            value = value.replace(new RegExp(`\\{${escapedId}\\}`, 'g'), `\${input:${id}}`);
+            value = value.replace(new RegExp(`\\$\\{${escapedId}\\}`, 'g'), `\${input:${id}}`);
+          }
+
+          if (!value && placeholders.size > 0) {
+            const [first] = Array.from(placeholders);
+            if (first) {
+              const variable = variableRecord[first];
+              ensureInput(first, variable?.description || desc, variable?.isSecret ?? isSecret);
+              value = `\${input:${first}}`;
+            }
+          }
+
+          const needsPrompt = (isSecret && !value?.includes('${input:')) || (!value && (isSecret || isRequired));
+
+          if (needsPrompt) {
+            const baseId = sanitizeId(name) || 'value';
+            const fallbackId = `header_${baseId}`;
+            ensureInput(fallbackId, desc, isSecret);
+            value = `\${input:${fallbackId}}`;
+          }
+
+          headers.push({ name, value: value ?? '' });
         }
       }
 
       const payload = {
         name: pkg?.identifier || server?.name || 'server',
         url: remote.url,
-        headers,
-        inputs: headerInputs,
+        headers: headers.length > 0 ? headers : undefined,
+        inputs: headerInputs.length > 0 ? headerInputs : undefined,
       };
       await messenger.sendRequest(installFromConfigType, { type: 'extension' }, payload);
     } finally {
@@ -237,12 +281,14 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
   const title = (findSelectedPackage()?.identifier) || server?.name || 'MCP Server';
   const description = server?.description || '';
   const repoUrl = server?.repository?.url;
-  const websiteUrl = server?.website_url;
+  const websiteUrl = server?.websiteUrl;
 
   const selectedPkg = findSelectedPackage();
+  const remoteIndex = Number(selectedRemoteIdx ?? '0');
+  const selectedRemote = hasRemote && Number.isInteger(remoteIndex) ? remotes[remoteIndex] : undefined;
   const { unsupported } = resolveCommand(selectedPkg);
   const localDisabled = !hasLocal || !selectedPkg || unsupported;
-  const remoteDisabled = !hasRemote || (!selectedPkg?.identifier && !server?.name);
+  const remoteDisabled = !hasRemote || !server?.name || !selectedRemote?.url;
 
   return (
     <Card className="h-full flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300 ease-in-out bg-[var(--vscode-editor-background)] border-[var(--vscode-editorWidget-border)]">
@@ -288,8 +334,8 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ server }) => {
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-4rem)]">
                   {remotes.map((r, i) => (
-                    <SelectItem key={`${r.url}-${i}`} value={String(i)}>
-                      {r.type || 'remote'} • {r.url}
+                    <SelectItem key={`${r.url ?? i}-${i}`} value={String(i)}>
+                      {r.type || 'remote'}{r.url ? ` • ${r.url}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>

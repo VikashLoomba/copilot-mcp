@@ -1,0 +1,868 @@
+components:
+  schemas:
+    Argument:
+      additionalProperties: false
+      properties:
+        choices:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        default:
+          type: string
+        description:
+          type: string
+        format:
+          type: string
+        isRepeated:
+          type: boolean
+        isRequired:
+          type: boolean
+        isSecret:
+          type: boolean
+        name:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        valueHint:
+          type: string
+        variables:
+          additionalProperties:
+            $ref: "#/components/schemas/Input"
+          type: object
+      required:
+        - type
+      type: object
+    ErrorDetail:
+      additionalProperties: false
+      properties:
+        location:
+          description: Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
+          type: string
+        message:
+          description: Error message text
+          type: string
+        value:
+          description: The value at the given location
+      type: object
+    ErrorModel:
+      additionalProperties: false
+      properties:
+        detail:
+          description: A human-readable explanation specific to this occurrence of the problem.
+          examples:
+            - Property foo is required but is missing.
+          type: string
+        errors:
+          description: Optional list of individual error details
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+          type:
+            - array
+            - "null"
+        instance:
+          description: A URI reference that identifies the specific occurrence of the problem.
+          examples:
+            - https://example.com/error-log/abc123
+          format: uri
+          type: string
+        status:
+          description: HTTP status code
+          examples:
+            - 400
+          format: int64
+          type: integer
+        title:
+          description: A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+          examples:
+            - Bad Request
+          type: string
+        type:
+          default: about:blank
+          description: A URI reference to human-readable documentation for the error.
+          examples:
+            - https://example.com/errors/example
+          format: uri
+          type: string
+      type: object
+    GitHubOIDCTokenExchangeInputBody:
+      additionalProperties: false
+      properties:
+        oidc_token:
+          description: GitHub Actions OIDC token
+          type: string
+      required:
+        - oidc_token
+      type: object
+    GitHubTokenExchangeInputBody:
+      additionalProperties: false
+      properties:
+        github_token:
+          description: GitHub OAuth token
+          type: string
+      required:
+        - github_token
+      type: object
+    HealthBody:
+      additionalProperties: false
+      properties:
+        github_client_id:
+          description: GitHub OAuth App Client ID
+          type: string
+        status:
+          description: Health status
+          examples:
+            - ok
+          type: string
+      required:
+        - status
+      type: object
+    Input:
+      additionalProperties: false
+      properties:
+        choices:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        default:
+          type: string
+        description:
+          type: string
+        format:
+          type: string
+        isRequired:
+          type: boolean
+        isSecret:
+          type: boolean
+        value:
+          type: string
+      type: object
+    KeyValueInput:
+      additionalProperties: false
+      properties:
+        choices:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        default:
+          type: string
+        description:
+          type: string
+        format:
+          type: string
+        isRequired:
+          type: boolean
+        isSecret:
+          type: boolean
+        name:
+          type: string
+        value:
+          type: string
+        variables:
+          additionalProperties:
+            $ref: "#/components/schemas/Input"
+          type: object
+      required:
+        - name
+      type: object
+    Metadata:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          type: integer
+        nextCursor:
+          type: string
+      required:
+        - count
+      type: object
+    OIDCTokenExchangeInputBody:
+      additionalProperties: false
+      properties:
+        oidc_token:
+          description: OIDC ID token from any provider
+          type: string
+      required:
+        - oidc_token
+      type: object
+    Package:
+      additionalProperties: false
+      properties:
+        environmentVariables:
+          items:
+            $ref: "#/components/schemas/KeyValueInput"
+          type:
+            - array
+            - "null"
+        fileSha256:
+          type: string
+        identifier:
+          minLength: 1
+          type: string
+        packageArguments:
+          items:
+            $ref: "#/components/schemas/Argument"
+          type:
+            - array
+            - "null"
+        registryBaseUrl:
+          type: string
+        registryType:
+          minLength: 1
+          type: string
+        runtimeArguments:
+          items:
+            $ref: "#/components/schemas/Argument"
+          type:
+            - array
+            - "null"
+        runtimeHint:
+          type: string
+        transport:
+          $ref: "#/components/schemas/Transport"
+        version:
+          minLength: 1
+          type: string
+      required:
+        - registryType
+        - identifier
+        - version
+      type: object
+    PingBody:
+      additionalProperties: false
+      properties:
+        pong:
+          description: Ping response
+          examples:
+            - true
+          type: boolean
+      required:
+        - pong
+      type: object
+    RegistryExtensions:
+      additionalProperties: false
+      properties:
+        isLatest:
+          type: boolean
+        publishedAt:
+          format: date-time
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - status
+        - publishedAt
+        - isLatest
+      type: object
+    Repository:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        subfolder:
+          type: string
+        url:
+          type: string
+      required:
+        - url
+        - source
+      type: object
+    ResponseMeta:
+      additionalProperties: false
+      properties:
+        io.modelcontextprotocol.registry/official:
+          $ref: "#/components/schemas/RegistryExtensions"
+      type: object
+    ServerJSON:
+      additionalProperties: false
+      properties:
+        $schema:
+          type: string
+        _meta:
+          $ref: "#/components/schemas/ServerMeta"
+        description:
+          maxLength: 100
+          minLength: 1
+          type: string
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        packages:
+          items:
+            $ref: "#/components/schemas/Package"
+          type:
+            - array
+            - "null"
+        remotes:
+          items:
+            $ref: "#/components/schemas/Transport"
+          type:
+            - array
+            - "null"
+        repository:
+          $ref: "#/components/schemas/Repository"
+        version:
+          type: string
+        websiteUrl:
+          type: string
+      required:
+        - name
+        - description
+        - version
+      type: object
+    ServerListResponse:
+      additionalProperties: false
+      properties:
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        servers:
+          items:
+            $ref: "#/components/schemas/ServerResponse"
+          type:
+            - array
+            - "null"
+      required:
+        - servers
+        - metadata
+      type: object
+    ServerMeta:
+      additionalProperties: false
+      properties:
+        io.modelcontextprotocol.registry/publisher-provided:
+          additionalProperties: {}
+          type: object
+      type: object
+    ServerResponse:
+      additionalProperties: false
+      properties:
+        _meta:
+          $ref: "#/components/schemas/ResponseMeta"
+        server:
+          $ref: "#/components/schemas/ServerJSON"
+      required:
+        - server
+        - _meta
+      type: object
+    SignatureTokenExchangeInput:
+      additionalProperties: false
+      properties:
+        domain:
+          description: Domain name
+          examples:
+            - example.com
+          type: string
+        signed_timestamp:
+          description: Hex-encoded Ed25519 signature of timestamp
+          examples:
+            - abcdef1234567890
+          type: string
+        timestamp:
+          description: RFC3339 timestamp
+          examples:
+            - "2023-01-01T00:00:00Z"
+          type: string
+      required:
+        - domain
+        - timestamp
+        - signed_timestamp
+      type: object
+    TokenResponse:
+      additionalProperties: false
+      properties:
+        expires_at:
+          format: int64
+          type: integer
+        registry_token:
+          type: string
+      required:
+        - registry_token
+        - expires_at
+      type: object
+    Transport:
+      additionalProperties: false
+      properties:
+        headers:
+          items:
+            $ref: "#/components/schemas/KeyValueInput"
+          type:
+            - array
+            - "null"
+        type:
+          type: string
+        url:
+          type: string
+      required:
+        - type
+      type: object
+info:
+  description: |-
+    A community driven registry service for Model Context Protocol (MCP) servers.
+
+    [GitHub repository](https://github.com/modelcontextprotocol/registry) | [Documentation](https://github.com/modelcontextprotocol/registry/tree/main/docs)
+  title: Official MCP Registry
+  version: 1.0.0
+openapi: 3.1.0
+paths:
+  /v0/auth/dns:
+    post:
+      description: Authenticate using DNS TXT record public key and signed timestamp
+      operationId: exchange-dns-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignatureTokenExchangeInput"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Exchange DNS signature for Registry JWT
+      tags:
+        - auth
+  /v0/auth/github-at:
+    post:
+      description: Exchange a GitHub OAuth access token for a short-lived Registry JWT token
+      operationId: exchange-github-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubTokenExchangeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Exchange GitHub OAuth access token for Registry JWT
+      tags:
+        - auth
+  /v0/auth/github-oidc:
+    post:
+      description: Exchange a GitHub Actions OIDC token for a short-lived Registry JWT token
+      operationId: exchange-github-oidc-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubOIDCTokenExchangeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Exchange GitHub OIDC token for Registry JWT
+      tags:
+        - auth
+  /v0/auth/http:
+    post:
+      description: Authenticate using HTTP-hosted public key and signed timestamp
+      operationId: exchange-http-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignatureTokenExchangeInput"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Exchange HTTP signature for Registry JWT
+      tags:
+        - auth
+  /v0/auth/oidc:
+    post:
+      description: Exchange an OIDC ID token from any configured provider for a short-lived Registry JWT token
+      operationId: exchange-oidc-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OIDCTokenExchangeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Exchange OIDC ID token for Registry JWT
+      tags:
+        - auth
+  /v0/health:
+    get:
+      description: Check the health status of the API
+      operationId: get-health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Health check
+      tags:
+        - health
+  /v0/ping:
+    get:
+      description: Simple ping endpoint
+      operationId: ping
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ping
+      tags:
+        - ping
+  /v0/publish:
+    post:
+      description: Publish a new MCP server to the registry or update an existing one
+      operationId: publish-server
+      parameters:
+        - description: Registry JWT token (obtained from /v0/auth/token/github)
+          in: header
+          name: Authorization
+          required: true
+          schema:
+            description: Registry JWT token (obtained from /v0/auth/token/github)
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerJSON"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+        - bearer: []
+      summary: Publish MCP server
+      tags:
+        - publish
+  /v0/servers:
+    get:
+      description: Get a paginated list of MCP servers from the registry
+      operationId: list-servers
+      parameters:
+        - description: Pagination cursor
+          example: server-cursor-123
+          explode: false
+          in: query
+          name: cursor
+          schema:
+            description: Pagination cursor
+            examples:
+              - server-cursor-123
+            type: string
+        - description: Number of items per page
+          example: 50
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 30
+            description: Number of items per page
+            examples:
+              - 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Filter servers updated since timestamp (RFC3339 datetime)
+          example: "2025-08-07T13:15:04.280Z"
+          explode: false
+          in: query
+          name: updated_since
+          schema:
+            description: Filter servers updated since timestamp (RFC3339 datetime)
+            examples:
+              - "2025-08-07T13:15:04.280Z"
+            type: string
+        - description: Search servers by name (substring match)
+          example: filesystem
+          explode: false
+          in: query
+          name: search
+          schema:
+            description: Search servers by name (substring match)
+            examples:
+              - filesystem
+            type: string
+        - description: Filter by version ('latest' for latest version, or an exact version like '1.2.3')
+          example: latest
+          explode: false
+          in: query
+          name: version
+          schema:
+            description: Filter by version ('latest' for latest version, or an exact version like '1.2.3')
+            examples:
+              - latest
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerListResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List MCP servers
+      tags:
+        - servers
+  /v0/servers/{serverName}:
+    get:
+      description: Get detailed information about the latest version of a specific MCP server.
+      operationId: get-server
+      parameters:
+        - description: URL-encoded server name
+          example: com.example%2Fmy-server
+          in: path
+          name: serverName
+          required: true
+          schema:
+            description: URL-encoded server name
+            examples:
+              - com.example%2Fmy-server
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get MCP server details
+      tags:
+        - servers
+  /v0/servers/{serverName}/versions:
+    get:
+      description: Get all available versions for a specific MCP server
+      operationId: get-server-versions
+      parameters:
+        - description: URL-encoded server name
+          example: com.example%2Fmy-server
+          in: path
+          name: serverName
+          required: true
+          schema:
+            description: URL-encoded server name
+            examples:
+              - com.example%2Fmy-server
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerListResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get all versions of an MCP server
+      tags:
+        - servers
+  /v0/servers/{serverName}/versions/{version}:
+    get:
+      description: Get detailed information about a specific version of an MCP server.
+      operationId: get-server-version
+      parameters:
+        - description: URL-encoded server name
+          example: com.example%2Fmy-server
+          in: path
+          name: serverName
+          required: true
+          schema:
+            description: URL-encoded server name
+            examples:
+              - com.example%2Fmy-server
+            type: string
+        - description: URL-encoded server version
+          example: 1.0.0
+          in: path
+          name: version
+          required: true
+          schema:
+            description: URL-encoded server version
+            examples:
+              - 1.0.0
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get specific MCP server version
+      tags:
+        - servers
+    put:
+      description: Update a specific version of an existing MCP server (admin only).
+      operationId: edit-server
+      parameters:
+        - description: Registry JWT token with edit permissions
+          in: header
+          name: Authorization
+          required: true
+          schema:
+            description: Registry JWT token with edit permissions
+            type: string
+        - description: URL-encoded server name
+          example: com.example%2Fmy-server
+          in: path
+          name: serverName
+          required: true
+          schema:
+            description: URL-encoded server name
+            examples:
+              - com.example%2Fmy-server
+            type: string
+        - description: URL-encoded version to edit
+          example: 1.0.0
+          in: path
+          name: version
+          required: true
+          schema:
+            description: URL-encoded version to edit
+            examples:
+              - 1.0.0
+            type: string
+        - description: New status for the server (active, deprecated, deleted)
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: New status for the server (active, deprecated, deleted)
+            enum:
+              - active
+              - deprecated
+              - deleted
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerJSON"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+        - bearer: []
+      summary: Edit MCP server
+      tags:
+        - admin

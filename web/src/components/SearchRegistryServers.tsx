@@ -6,36 +6,18 @@ import RegistryServerCard from './RegistryServerCard';
 import { useVscodeApi } from '@/contexts/VscodeApiContext';
 import { Messenger } from 'vscode-messenger-webview';
 import { registrySearchType } from '../../../src/shared/types/rpcTypes';
-
-type RegistryPackage = {
-  identifier?: string;
-  version?: string;
-  registry_type?: string;
-  runtime_hint?: string;
-  runtime_arguments?: Array<any> | null;
-  package_arguments?: Array<any> | null;
-  environment_variables?: Array<any> | null;
-  transport?: { type?: string } | null;
-};
-
-type RegistryRemote = { type?: string; url: string };
-
-type RegistryServer = {
-  name?: string;
-  description?: string;
-  repository?: { url?: string };
-  website_url?: string;
-  packages?: RegistryPackage[] | null;
-  remotes?: RegistryRemote[] | null;
-  _meta?: { [k: string]: any };
-};
+import {
+  normalizeRegistryMetadata,
+  normalizeRegistryServerResponse,
+} from '@/types/registry';
+import type { RegistrySearchResponse, RegistryServerResponse } from '@/types/registry';
 
 const ITEMS_PER_PAGE = 10;
 
 const SearchRegistryServers: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce<string>(searchTerm, 500);
-  const [results, setResults] = useState<RegistryServer[]>([]);
+  const [results, setResults] = useState<RegistryServerResponse[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, setCurrentPage] = useState(1);
@@ -60,9 +42,21 @@ const SearchRegistryServers: React.FC = () => {
         search: debouncedSearchTerm,
         limit: ITEMS_PER_PAGE,
         cursor,
-      });
-      setResults((resp as any)?.servers || []);
-      setNextCursor((resp as any)?.metadata?.next_cursor);
+      }) as RegistrySearchResponse;
+      const rawServers = Array.isArray(resp?.servers)
+        ? resp?.servers
+        : Array.isArray(resp as any)
+          ? (resp as unknown as any[])
+          : [];
+      const normalizedServers = rawServers
+        .map((entry) => normalizeRegistryServerResponse(entry))
+        .filter((entry): entry is RegistryServerResponse => {
+          const server = entry.server;
+          return !!server && typeof server.name === 'string' && server.name.length > 0;
+        });
+      setResults(normalizedServers);
+      const metadata = normalizeRegistryMetadata(resp?.metadata ?? {});
+      setNextCursor(metadata.nextCursor);
     } catch (e) {
       console.error(e);
       setError('Search failed');
@@ -113,9 +107,16 @@ const SearchRegistryServers: React.FC = () => {
       {!isLoading && !error && results.length > 0 && (
         <>
           <div className="grid grid-cols-1 gap-4">
-            {results.map((srv, idx) => (
-              <RegistryServerCard key={(srv._meta?.["io.modelcontextprotocol.registry/official"]?.id ?? idx)} server={srv} />
-            ))}
+            {results.map((srv, idx) => {
+              const officialMeta = (srv._meta as Record<string, any> | undefined)?.["io.modelcontextprotocol.registry/official"];
+              const key = officialMeta?.id ?? `${srv.server?.name ?? 'server'}-${srv.server?.version ?? idx}`;
+              return (
+                <RegistryServerCard
+                  key={key}
+                  serverResponse={srv}
+                />
+              );
+            })}
           </div>
           <div className="flex justify-between items-center mt-4">
             <Button onClick={handlePreviousPage} disabled={cursorStack.length === 0 || isLoading}>

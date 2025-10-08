@@ -2,7 +2,7 @@ out/**
 dist/**/bundle.js.map
 !dist/extension.js
 !web/dist/**
-
+.env
 # Exclude all node_modules directories
 **/node_modules/**
 
