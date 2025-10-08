@@ -3,16 +3,16 @@
   "author": {
     "email": "vikash@automatalabs.io",
     "name": "Vikash Loomba",
-    "url": "https://automatalabs.io"
+    "url": "https://cloudmcp.run"
   },
   "publisher": "AutomataLabs",
   "repository": {
     "url": "https://github.com/vikashloomba/copilot-mcp",
     "type": "git"
   },
-  "displayName": "‎ Copilot MCP ",
+  "displayName": "Copilot MCP ",
   "description": "Search, manage, and install open-source MCP servers",
-  "version": "0.0.83",
+  "version": "0.0.84",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.101.0"

@@ -1,5 +1,21 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.84 – Remote Registry Installs Are Back 🎯
+*(October 8 2025)*
+
+We’ve restored full compatibility with the Official MCP Registry and just added the capability to **add remote HTTP MCP servers** right from Copilot MCP!
+
+What’s new
+
+- Remote endpoints now install cleanly with automatic `${input:...}` prompts for tokens and headers.
+- Registry searches are working again, so results appear immediately with updated metadata.
+- Remote MCP server results will show an "Install Remote" button that will set up VSCode with the server.
+
+
+*Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.84) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
+
+
+
 ## Version 0.0.80 – Official MCP Registry Search + Direct Installs 🎉
 *(September 12 2025)*
 
