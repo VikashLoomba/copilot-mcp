@@ -1,7 +1,40 @@
 import {
-	type RequestType,
-	type NotificationType,
+        type RequestType,
+        type NotificationType,
 } from "vscode-messenger-common";
+
+export type InstallInput = {
+        type: "promptString";
+        id: string;
+        description?: string;
+        password?: boolean;
+};
+
+export interface InstallCommandPayload {
+        name: string;
+        command?: string;
+        args?: string[];
+        env?: Record<string, string>;
+        url?: string;
+        headers?: Array<{ name: string; value: string }>;
+        inputs?: InstallInput[];
+}
+
+export type InstallTransport = "stdio" | "http" | "sse";
+
+export type InstallMode = "package" | "remote";
+
+export interface ClaudeInstallRequest extends InstallCommandPayload {
+        transport: InstallTransport;
+        mode: InstallMode;
+}
+
+export interface ClaudeInstallResponse {
+        success: boolean;
+        cliAvailable: boolean;
+        errorMessage?: string;
+        canceled?: boolean;
+}
 
 export const searchServersType: RequestType<
 	{ query: string; 
@@ -56,15 +89,13 @@ export const previewReadmeType: NotificationType<{
 }> = { method: "previewReadme" };
 
 // Direct installation from a structured config (used by Official Registry results)
-export const installFromConfigType: RequestType<{
-	name: string;
-	command?: string;
-	args?: string[];
-	env?: Record<string, string>;
-	inputs?: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }>;
-	url?: string; // for remote installs
-	headers?: Array<{ name: string; value: string }>; // for remote installs with headers
-}, boolean> = { method: "installFromConfig" };
+export const installFromConfigType: RequestType<InstallCommandPayload, boolean> = {
+        method: "installFromConfig",
+};
+
+export const installClaudeFromConfigType: RequestType<ClaudeInstallRequest, ClaudeInstallResponse> = {
+        method: "installClaudeFromConfig",
+};
 
 // Official Registry search (proxied via extension to avoid CORS)
 export const registrySearchType: RequestType<

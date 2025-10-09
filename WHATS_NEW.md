@@ -7,6 +7,8 @@ We’ve restored full compatibility with the Official MCP Registry and just adde
 
 What’s new
 
+- Unified install controls let you choose between VS Code and Claude Code before running a single install button.
+- Claude CLI installs now run through a background VS Code task with inline prompts, success toasts, and guidance when the CLI isn’t installed (including a one-click copy of the generated command).
 - Remote endpoints now install cleanly with automatic `${input:...}` prompts for tokens and headers.
 - Registry searches are working again, so results appear immediately with updated metadata.
 - Remote MCP server results will show an "Install Remote" button that will set up VSCode with the server.
