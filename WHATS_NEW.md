@@ -1,5 +1,12 @@
 # What's New in Copilot MCP!
 
+## Version 0.0.85 – Claude Code, Bug Fixes, and Reliability Improvements 🛠
+
+- Unified install controls let you choose between VS Code and Claude Code before running a single install button.
+- Claude Code support: Install MCP servers directly into Claude Code (if installed) using stdio or HTTP transports.
+
+*Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.84) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
+
 ## Version 0.0.84 – Remote Registry Installs Are Back 🎯
 *(October 8 2025)*
 
@@ -10,10 +17,6 @@ What’s new
 - Remote endpoints now install cleanly with automatic `${input:...}` prompts for tokens and headers.
 - Registry searches are working again, so results appear immediately with updated metadata.
 - Remote MCP server results will show an "Install Remote" button that will set up VSCode with the server.
-
-
-*Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.84) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
-
 
 
 ## Version 0.0.80 – Official MCP Registry Search + Direct Installs 🎉

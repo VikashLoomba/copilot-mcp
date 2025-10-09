@@ -19,19 +19,28 @@ import {
 import { TelemetryEvents } from "../telemetry/types";
 import { Messenger } from "vscode-messenger";
 import {
-	aiAssistedSetupType,
-	deleteServerType,
-	getMcpConfigType,
-	searchServersType,
-	sendFeedbackType,
-	updateMcpConfigType,
-	updateServerEnvVarType,
-	cloudMCPInterestType,
-	previewReadmeType,
-    installFromConfigType,
-    registrySearchType,
+        aiAssistedSetupType,
+        deleteServerType,
+        getMcpConfigType,
+        searchServersType,
+        sendFeedbackType,
+        updateMcpConfigType,
+        updateServerEnvVarType,
+        cloudMCPInterestType,
+        previewReadmeType,
+        installFromConfigType,
+        installClaudeFromConfigType,
+        registrySearchType,
+} from "../shared/types/rpcTypes";
+import type {
+        InstallCommandPayload,
+        InstallInput,
+        InstallTransport,
+        ClaudeInstallRequest,
 } from "../shared/types/rpcTypes";
 import axios from "axios";
+import { outputLogger } from "../utilities/outputLogger";
+import { resolve } from "dns";
 
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
@@ -51,7 +60,7 @@ async function getServersFromMcpJsonFile(
 
 // Consolidates servers from global settings, workspace settings, and .vscode/mcp.json files
 async function getAllServers(): Promise<Record<string, any>> {
-	const config = vscode.workspace.getConfiguration("mcp");
+        const config = vscode.workspace.getConfiguration("mcp");
 
 	// 1. Get servers from global settings
 	const globalServers = config.inspect<Record<string, any>>("servers")?.globalValue || {};
@@ -74,7 +83,136 @@ async function getAllServers(): Promise<Record<string, any>> {
 	mergedServers = { ...mergedServers, ...workspaceSettingsServers };
 	mergedServers = { ...mergedServers, ...mcpJsonFileServers };
 	
-	return mergedServers;
+        return mergedServers;
+}
+
+const INPUT_PLACEHOLDER_REGEX = /\\?\${input:([^}]+)}/g;
+
+function replaceInputPlaceholders(value: string, replacements: Map<string, string>): string {
+        return value.replace(INPUT_PLACEHOLDER_REGEX, (_, rawId) => {
+                const key = String(rawId ?? "").trim();
+                if (!key) {
+                        return "";
+                }
+                return replacements.get(key) ?? "";
+        });
+}
+
+function applyInputsToPayload(
+        payload: InstallCommandPayload,
+        replacements: Map<string, string>
+): InstallCommandPayload {
+        const args = payload.args?.map((arg) => replaceInputPlaceholders(arg, replacements));
+        const envEntries = payload.env ? Object.entries(payload.env) : [];
+        const env = envEntries.length
+                ? envEntries.reduce<Record<string, string>>((acc, [key, value]) => {
+                                acc[key] = replaceInputPlaceholders(value, replacements);
+                                return acc;
+                        }, {})
+                : undefined;
+        const headers = payload.headers?.map((header) => ({
+                name: header.name,
+                value: header.value !== undefined ? replaceInputPlaceholders(header.value, replacements) : header.value,
+        }));
+
+        return {
+                ...payload,
+                args,
+                env,
+                headers,
+                inputs: undefined,
+        };
+}
+
+async function collectInstallInputs(inputs?: InstallInput[]): Promise<{
+        values: Map<string, string>;
+        canceled: boolean;
+}> {
+        const values = new Map<string, string>();
+        if (!inputs || inputs.length === 0) {
+                return { values, canceled: false };
+        }
+
+        for (const input of inputs) {
+                if (values.has(input.id)) {
+                        continue;
+                }
+                const response = await vscode.window.showInputBox({
+                        prompt: input.description,
+                        password: input.password ?? false,
+                        ignoreFocusOut: true,
+                });
+                if (response === undefined) {
+                        return { values, canceled: true };
+                }
+                values.set(input.id, response);
+        }
+
+        return { values, canceled: false };
+}
+
+function headersArrayToRecord(headers?: Array<{ name: string; value: string }>) {
+        if (!headers) {
+                return undefined;
+        }
+        const record: Record<string, string> = {};
+        for (const header of headers) {
+                if (!header?.name) {
+                        continue;
+                }
+                record[header.name] = header.value ?? "";
+        }
+        return Object.keys(record).length > 0 ? record : undefined;
+}
+
+function buildClaudeConfigObject(payload: InstallCommandPayload, transport: InstallTransport) {
+        const config: Record<string, unknown> = { type: transport };
+        if (transport === "stdio") {
+                if (payload.command) {
+                        config.command = payload.command;
+                }
+                if (payload.args && payload.args.length > 0) {
+                        config.args = payload.args;
+                }
+                if (payload.env && Object.keys(payload.env).length > 0) {
+                        config.env = payload.env;
+                }
+        } else {
+                if (payload.url) {
+                        config.url = payload.url;
+                }
+                const headerRecord = headersArrayToRecord(payload.headers);
+                if (headerRecord) {
+                        config.headers = headerRecord;
+                }
+        }
+        return config;
+}
+
+async function performVscodeInstall(payload: InstallCommandPayload) {
+        const response = await openMcpInstallUri(payload);
+        return !!(response && (response as any).success);
+}
+
+async function runClaudeCliTask(
+        name: string,
+        transport: InstallTransport,
+        config: Record<string, unknown>,
+): Promise<void> {
+        const claudeBinary = "claude";
+        const configJson = JSON.stringify(config);
+		outputLogger.info("Config", config);
+
+		const shellExecution = vscode.window.createTerminal({
+			name: `Claude MCP Install (${name})`,
+		});
+		
+		shellExecution.show();
+		shellExecution.sendText(`${claudeBinary} mcp add-json ${name} '${configJson}'`);
+
+		void vscode.window.showInformationMessage(
+			"Claude CLI install started. See Terminal Output for progress.",
+		);
 }
 
 
@@ -184,15 +322,42 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		// Direct install path from structured config (Official Registry results)
-		messenger.onRequest(installFromConfigType, async (payload) => {
-			try {
-				const cmdResponse = await openMcpInstallUri(payload as any);
-				return !!(cmdResponse && (cmdResponse as any).success);
-			} catch (error) {
-				console.error("Error during direct install: ", error);
-				return false;
-			}
-		});
+                messenger.onRequest(installFromConfigType, async (payload) => {
+                        try {
+                                logWebviewInstallAttempt(payload.name);
+                                return await performVscodeInstall(payload);
+                        } catch (error) {
+                                console.error("Error during direct install: ", error);
+                                logError(error as Error, "registry-install", { target: "vscode" });
+                                return false;
+                        }
+                });
+
+                messenger.onRequest(installClaudeFromConfigType, async (payload: ClaudeInstallRequest) => {
+                        logWebviewInstallAttempt(payload.name);
+                        const { values, canceled } = await collectInstallInputs(payload.inputs);
+                        if (canceled) {
+                                void vscode.window.showInformationMessage("Claude installation canceled.");
+                                return;
+                        }
+
+                        const substitutedPayload = applyInputsToPayload(payload, values);
+
+                        try {
+                                const config = buildClaudeConfigObject(substitutedPayload, payload.transport);
+                                await runClaudeCliTask(payload.name, payload.transport, config);
+                        } catch (error) {
+                                logError(error as Error, "claude-cli-install", {
+                                        transport: payload.transport,
+                                        mode: payload.mode,
+                                });
+                                void vscode.window.showErrorMessage(
+                                        error instanceof Error
+                                                ? error.message
+                                                : "Claude CLI failed to start. Check the terminal output.",
+                                );
+                        }
+                });
 
 		// Official Registry search proxied via extension (avoids webview CORS)
 		messenger.onRequest(registrySearchType, async (payload) => {
@@ -202,7 +367,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					limit: payload.limit ?? 10,
 					search: payload.search,
 				};
-				if (payload.cursor) params.cursor = payload.cursor;
+                                if (payload.cursor) {
+                                        params.cursor = payload.cursor;
+                                }
 				const res = await axios.get('https://registry.modelcontextprotocol.io/v0/servers', { params });
 				const data = res?.data ?? {};
 				return {

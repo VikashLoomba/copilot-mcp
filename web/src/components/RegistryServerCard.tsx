@@ -9,16 +9,36 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
-import { installFromConfigType } from "../../../src/shared/types/rpcTypes";
+import {
+  installClaudeFromConfigType,
+  installFromConfigType,
+  type InstallMode,
+} from "../../../src/shared/types/rpcTypes";
 import type {
-  RegistryKeyValueInput,
   RegistryPackage,
   RegistryServer,
   RegistryServerResponse,
   RegistryTransport,
 } from "@/types/registry";
+import {
+  type ProgramTarget,
+  buildPackageInstall,
+  buildRemoteInstall,
+  copyClaudeCommand,
+  createClaudeAddJsonCommand,
+} from "@/utils/registryInstall";
+
+const CLAUDE_DOCS_URL =
+  "https://github.com/vikashloomba/copilot-mcp/blob/main/mcp.md#add-mcp-servers-from-json-configuration";
+
+type InstallErrorState = {
+  message: string;
+  missingCli?: boolean;
+  cliCommand?: string;
+};
 
 interface RegistryServerCardProps {
   serverResponse: RegistryServerResponse;
@@ -27,27 +47,31 @@ interface RegistryServerCardProps {
 const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse }) => {
   const vscodeApi = useVscodeApi();
   const messenger = useMemo(() => new Messenger(vscodeApi), [vscodeApi]);
-  const [isInstallingLocal, setIsInstallingLocal] = useState(false);
-  const [isInstallingRemote, setIsInstallingRemote] = useState(false);
   const server = (serverResponse?.server ?? serverResponse) as RegistryServer | undefined;
-  const packages: RegistryPackage[] = Array.isArray(server?.packages) ? server?.packages ?? [] : [];
+  const packages: RegistryPackage[] = Array.isArray(server?.packages) ? server.packages ?? [] : [];
   const remotes: RegistryTransport[] = Array.isArray(server?.remotes)
-    ? (server?.remotes ?? []).filter((r): r is RegistryTransport => typeof r?.url === 'string' && r.url.length > 0)
+    ? (server.remotes ?? []).filter((remote): remote is RegistryTransport => Boolean(remote?.url))
     : [];
   const hasLocal = packages.length > 0;
   const hasRemote = remotes.length > 0;
 
-  // Prefer stdio package for default selection
-  const defaultPackage = packages.find((p) => p?.transport?.type === 'stdio') || packages[0];
+  const defaultPackage = packages.find((pkg) => pkg?.transport?.type === 'stdio') || packages[0];
   const [selectedPackageId, setSelectedPackageId] = useState<string | undefined>(defaultPackage?.identifier);
   const [selectedRemoteIdx, setSelectedRemoteIdx] = useState<string | undefined>(hasRemote ? '0' : undefined);
+  const [programTarget, setProgramTarget] = useState<ProgramTarget>('vscode');
+  const [installMode, setInstallMode] = useState<InstallMode>(hasLocal ? 'package' : 'remote');
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installError, setInstallError] = useState<InstallErrorState | null>(null);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [lastClaudeCommand, setLastClaudeCommand] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'error'>('idle');
 
   useEffect(() => {
     messenger.start();
   }, [messenger]);
 
   useEffect(() => {
-    if (!packages.find((p) => p.identifier === selectedPackageId)) {
+    if (!packages.find((pkg) => pkg.identifier === selectedPackageId)) {
       setSelectedPackageId(defaultPackage?.identifier);
     }
   }, [packages, defaultPackage?.identifier, selectedPackageId]);
@@ -58,237 +82,121 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
       return;
     }
     const currentIndex = Number(selectedRemoteIdx ?? '0');
-    if (
-      Number.isNaN(currentIndex) ||
-      currentIndex < 0 ||
-      currentIndex >= remotes.length
-    ) {
+    if (Number.isNaN(currentIndex) || currentIndex < 0 || currentIndex >= remotes.length) {
       setSelectedRemoteIdx('0');
     }
   }, [hasRemote, remotes, selectedRemoteIdx]);
 
-  const findSelectedPackage = (): RegistryPackage | undefined =>
-    packages.find((p) => p.identifier === selectedPackageId);
-
-  const buildArgsAndInputs = (pkg?: RegistryPackage) => {
-    const args: string[] = [];
-    const argInputs: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }> = [];
-    let positionalIndex = 0;
-    const sanitizeId = (s: string) => s.replace(/^--?/, '').replace(/[^a-zA-Z0-9_]+/g, '_');
-
-    const pushArgList = (list?: Array<any> | null) => {
-      if (!Array.isArray(list)) return;
-      for (const a of list) {
-        const t = a?.type as string | undefined;
-        const name = a?.name as string | undefined;
-        const value = a?.value as string | undefined;
-        const valueHint = (a?.valueHint ?? a?.default) as string | undefined;
-        const isSecret = !!a?.isSecret;
-        const description = a?.description as string | undefined;
-
-        if (t === 'positional') {
-          if (value) {
-            args.push(value);
-          } else if (valueHint) {
-            args.push(valueHint);
-          } else {
-            const id = `arg_${positionalIndex++}`;
-            argInputs.push({ type: 'promptString', id, description: description || 'Provide value', password: !!isSecret });
-            args.push(`\${input:${id}}`);
-          }
-        } else if (t === 'named') {
-          if (name) args.push(name);
-          if (value) {
-            args.push(value);
-          } else if (valueHint) {
-            args.push(valueHint);
-          } else {
-            const base = name ? sanitizeId(name) : `arg_${positionalIndex++}`;
-            const id = `arg_${base}`;
-            argInputs.push({ type: 'promptString', id, description: description || `Value for ${name || 'argument'}`, password: !!isSecret });
-            args.push(`\${input:${id}}`);
-          }
-        }
-      }
-    };
-    pushArgList(pkg?.runtimeArguments ?? undefined);
-    pushArgList(pkg?.packageArguments ?? undefined);
-    return { args, inputs: argInputs };
-  };
-
-  const buildEnvAndInputs = (pkg?: RegistryPackage) => {
-    const env: Record<string, string> = {};
-    const inputs: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }>= [];
-    if (Array.isArray(pkg?.environmentVariables)) {
-      for (const v of pkg!.environmentVariables!) {
-        const key = v?.name as string | undefined;
-        const isSecret = !!v?.isSecret;
-        const def = (v?.value ?? v?.default) as string | undefined;
-        const description = v?.description as string | undefined;
-        if (!key) continue;
-        // If no default, always prompt. Use password for secrets
-        if (typeof def === 'string' && def.length > 0) {
-          env[key] = def;
-        } else {
-          inputs.push({ type: 'promptString', id: key, description, password: !!isSecret });
-          env[key] = `\${input:${key}}`;
-        }
-      }
+  useEffect(() => {
+    if (installMode === 'package' && !hasLocal && hasRemote) {
+      setInstallMode('remote');
+    } else if (installMode === 'remote' && !hasRemote && hasLocal) {
+      setInstallMode('package');
     }
-    return { env, inputs };
-  };
+  }, [installMode, hasLocal, hasRemote]);
 
-  const resolveCommand = (pkg?: RegistryPackage): { command?: string; unsupported?: boolean } => {
-    if (!pkg) return { command: undefined };
-    if (pkg.runtimeHint) return { command: pkg.runtimeHint };
-    const type = (pkg.registryType || '').toLowerCase();
-    if (type === 'npm') return { command: 'npx' };
-    if (type === 'pypi') return { command: 'uvx' };
-    if (type === 'oci') return { command: 'docker' };
-    // Per requirements, do not auto-map nuget or mcpb without hint
-    return { command: undefined, unsupported: true };
-  };
+  useEffect(() => {
+    setInstallError(null);
+    setInstallStatus(null);
+    setCopyFeedback('idle');
+  }, [installMode, programTarget, selectedPackageId, selectedRemoteIdx]);
 
-  const onInstallLocal = async () => {
-    const pkg = findSelectedPackage();
-    if (!pkg) return;
-    const { command, unsupported } = resolveCommand(pkg);
-    if (unsupported || !command) {
-      // Basic guard; disable button in UI too
-      return;
-    }
-    setIsInstallingLocal(true);
-    try {
-      const { args, inputs: argInputs } = buildArgsAndInputs(pkg);
-      const { env, inputs: envInputs } = buildEnvAndInputs(pkg);
-      // Ensure base package spec is included for commands like npx/uvx
-      const baseArgs: string[] = [];
-      if (command === 'npx' && pkg.identifier) {
-        const spec = pkg.version ? `${pkg.identifier}@${pkg.version}` : pkg.identifier;
-        // Avoid duplicating if already present in args
-        if (!args.some((a) => typeof a === 'string' && a.includes(pkg.identifier!))) {
-          baseArgs.push(spec);
-        }
-      } else if (command === 'uvx' && pkg.identifier) {
-        const spec = pkg.version && pkg.version !== 'latest' ? `${pkg.identifier}==${pkg.version}` : pkg.identifier;
-        if (!args.some((a) => typeof a === 'string' && a.includes(pkg.identifier!))) {
-          baseArgs.push(spec);
-        }
-      }
-      const payload = {
-        name: pkg.identifier || server?.name || 'server',
-        command,
-        args: [...baseArgs, ...args],
-        env,
-        inputs: [...argInputs, ...envInputs],
-      };
-      await messenger.sendRequest(installFromConfigType, { type: 'extension' }, payload);
-    } finally {
-      setIsInstallingLocal(false);
-    }
-  };
+  const selectedPackage = useMemo(
+    () => packages.find((pkg) => pkg.identifier === selectedPackageId),
+    [packages, selectedPackageId],
+  );
 
-  const onInstallRemote = async () => {
-    if (!hasRemote) return;
-    const idx = Number(selectedRemoteIdx || '0');
-    const remote = remotes[idx];
-    const pkg = findSelectedPackage();
-    if (!remote) return;
-    setIsInstallingRemote(true);
-    try {
-      const headerInputs: Array<{ type: 'promptString'; id: string; description?: string; password?: boolean }> = [];
-      const headers: Array<{ name: string; value: string }> = [];
-      const sanitizeId = (s: string) => s.replace(/[^a-zA-Z0-9_]+/g, '_');
+  const selectedRemote = useMemo(() => {
+    if (!hasRemote || selectedRemoteIdx === undefined) return undefined;
+    const index = Number(selectedRemoteIdx);
+    if (Number.isNaN(index) || index < 0 || index >= remotes.length) return undefined;
+    return remotes[index];
+  }, [hasRemote, remotes, selectedRemoteIdx]);
 
-      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const packageBuild = useMemo(() => buildPackageInstall(server, selectedPackage), [server, selectedPackage]);
+  const remoteBuild = useMemo(() => buildRemoteInstall(server, selectedRemote), [server, selectedRemote]);
+  const activeBuild = installMode === 'package' ? packageBuild : remoteBuild;
 
-      if (Array.isArray(remote.headers)) {
-        for (const rawHeader of remote.headers as RegistryKeyValueInput[]) {
-          const name = rawHeader.name?.trim();
-          if (!name) continue;
-          const desc = rawHeader.description || undefined;
-          const isSecret = !!rawHeader.isSecret;
-          const isRequired = !!rawHeader.isRequired;
-          const variableRecord = rawHeader.variables && typeof rawHeader.variables === 'object'
-            ? rawHeader.variables
-            : {};
-          const template = (rawHeader.value ?? rawHeader.default ?? '') as string;
-          const placeholders = new Set<string>();
-
-          for (const key of Object.keys(variableRecord)) {
-            if (key) placeholders.add(key);
-          }
-
-          const placeholderPattern = /\{([^{}]+)\}|\$\{([^{}]+)\}/g;
-          let match: RegExpExecArray | null;
-          while ((match = placeholderPattern.exec(template)) !== null) {
-            const key = (match[1] ?? match[2])?.trim();
-            if (key) placeholders.add(key);
-          }
-
-          let value = template;
-          const ensureInput = (id: string, descriptionText?: string, password?: boolean) => {
-            if (!id) return;
-            if (!headerInputs.some((i) => i.id === id)) {
-              headerInputs.push({ type: 'promptString', id, description: descriptionText, password });
-            }
-          };
-
-          for (const id of placeholders) {
-            const variable = variableRecord[id];
-            const descriptionText = variable?.description || desc;
-            const password = variable?.isSecret ?? isSecret;
-            ensureInput(id, descriptionText, password);
-            const escapedId = escapeRegExp(id);
-            value = value.replace(new RegExp(`\\{${escapedId}\\}`, 'g'), `\${input:${id}}`);
-            value = value.replace(new RegExp(`\\$\\{${escapedId}\\}`, 'g'), `\${input:${id}}`);
-          }
-
-          if (!value && placeholders.size > 0) {
-            const [first] = Array.from(placeholders);
-            if (first) {
-              const variable = variableRecord[first];
-              ensureInput(first, variable?.description || desc, variable?.isSecret ?? isSecret);
-              value = `\${input:${first}}`;
-            }
-          }
-
-          const needsPrompt = (isSecret && !value?.includes('${input:')) || (!value && (isSecret || isRequired));
-
-          if (needsPrompt) {
-            const baseId = sanitizeId(name) || 'value';
-            const fallbackId = `header_${baseId}`;
-            ensureInput(fallbackId, desc, isSecret);
-            value = `\${input:${fallbackId}}`;
-          }
-
-          headers.push({ name, value: value ?? '' });
-        }
-      }
-
-      const payload = {
-        name: pkg?.identifier || server?.name || 'server',
-        url: remote.url,
-        headers: headers.length > 0 ? headers : undefined,
-        inputs: headerInputs.length > 0 ? headerInputs : undefined,
-      };
-      await messenger.sendRequest(installFromConfigType, { type: 'extension' }, payload);
-    } finally {
-      setIsInstallingRemote(false);
-    }
-  };
-
-  const title = (findSelectedPackage()?.identifier) || server?.name || 'MCP Server';
+  const title = selectedPackage?.identifier || server?.name || 'MCP Server';
   const description = server?.description || '';
   const repoUrl = server?.repository?.url;
   const websiteUrl = server?.websiteUrl;
 
-  const selectedPkg = findSelectedPackage();
-  const remoteIndex = Number(selectedRemoteIdx ?? '0');
-  const selectedRemote = hasRemote && Number.isInteger(remoteIndex) ? remotes[remoteIndex] : undefined;
-  const { unsupported } = resolveCommand(selectedPkg);
-  const localDisabled = !hasLocal || !selectedPkg || unsupported;
-  const remoteDisabled = !hasRemote || !server?.name || !selectedRemote?.url;
+  const programLabel = programTarget === 'vscode' ? 'VS Code' : 'Claude Code';
+  const buttonLabel = isInstalling
+    ? `Installing in ${programLabel}…`
+    : installMode === 'package'
+      ? `Install Package in ${programLabel}`
+      : programTarget === 'claude'
+        ? `Add Remote to ${programLabel}`
+        : `Install Remote in ${programLabel}`;
+
+  const isInstallDisabled =
+    isInstalling ||
+    !activeBuild.payload ||
+    Boolean(activeBuild.unavailableReason) ||
+    (installMode === 'package' && !selectedPackage) ||
+    (installMode === 'remote' && (!hasRemote || !selectedRemote)) ||
+    (programTarget === 'claude' && !activeBuild.transport);
+
+  const onInstall = async () => {
+    if (!activeBuild.payload) return;
+
+    setIsInstalling(true);
+    setInstallError(null);
+    setInstallStatus(null);
+    setCopyFeedback('idle');
+    setLastClaudeCommand(null);
+
+    try {
+      if (programTarget === 'vscode') {
+        const success = await messenger.sendRequest(installFromConfigType, { type: 'extension' }, activeBuild.payload);
+        if (success) {
+          setInstallStatus('VS Code is opening the MCP install prompt.');
+        } else {
+          setInstallError({ message: 'Unable to start the VS Code install flow. Please try again.' });
+        }
+        return;
+      }
+
+      if (!activeBuild.transport) {
+        setInstallError({ message: 'This install mode is not supported for Claude Code yet.' });
+        return;
+      }
+
+      await messenger.sendRequest(installClaudeFromConfigType, { type: 'extension' }, {
+        ...activeBuild.payload,
+        transport: activeBuild.transport,
+        mode: installMode,
+      });
+
+      setInstallStatus('Installed! See Terminal Output for details.');
+    } catch (error) {
+      console.error('Error during install', error);
+      setInstallError({
+        message: error instanceof Error ? error.message : 'Unexpected error during install.',
+      });
+    } finally {
+      setIsInstalling(false);
+    }
+  };
+
+  const onCopyCommand = async () => {
+    const commandToCopy = lastClaudeCommand
+      ?? (activeBuild.payload && activeBuild.transport
+        ? createClaudeAddJsonCommand(activeBuild.payload.name, activeBuild.transport, activeBuild.payload)
+        : null);
+
+    if (!commandToCopy) {
+      setCopyFeedback('error');
+      return;
+    }
+
+    const copied = await copyClaudeCommand(commandToCopy);
+    setCopyFeedback(copied ? 'copied' : 'error');
+  };
+
+  const modeSelectorVisible = hasLocal && hasRemote;
 
   return (
     <Card className="h-full flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300 ease-in-out bg-[var(--vscode-editor-background)] border-[var(--vscode-editorWidget-border)]">
@@ -305,7 +213,65 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
             <a className="text-blue-500 hover:underline" href={websiteUrl} target="_blank" rel="noreferrer">Website</a>
           )}
         </div>
-        {hasLocal && (
+        <div className="flex items-center gap-2 w-full">
+          <span className="text-sm text-muted-foreground flex-shrink-0">Install to:</span>
+          <ToggleGroup
+            type="single"
+            value={programTarget}
+            onValueChange={(value) => {
+              if (value === 'vscode' || value === 'claude') {
+                setProgramTarget(value);
+              }
+            }}
+            className="gap-2"
+          >
+            <ToggleGroupItem
+              value="vscode"
+              aria-label="Install in VS Code"
+              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0"
+            >
+              VS Code
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="claude"
+              aria-label="Install in Claude Code"
+              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0"
+            >
+              Claude Code
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        {modeSelectorVisible && (
+          <div className="flex items-center gap-2 w-full">
+            <span className="text-sm text-muted-foreground flex-shrink-0">Mode:</span>
+            <ToggleGroup
+              type="single"
+              value={installMode}
+              onValueChange={(value) => {
+                if (value === 'package' || value === 'remote') {
+                  setInstallMode(value);
+                }
+              }}
+              className="gap-2"
+            >
+              <ToggleGroupItem
+                value="package"
+                aria-label="Install package"
+                className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0"
+              >
+                Package
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="remote"
+                aria-label="Install remote endpoint"
+                className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0"
+              >
+                Remote
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        )}
+        {installMode === 'package' && hasLocal && (
           <div className="flex items-center gap-2 w-full">
             <span className="text-sm text-muted-foreground flex-shrink-0">Package:</span>
             <div className="flex-1 min-w-0">
@@ -314,9 +280,9 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-4rem)]">
-                  {packages.map((p) => (
-                    <SelectItem key={p.identifier || ''} value={p.identifier || ''}>
-                      {p.identifier} {p.version ? `@${p.version}` : ''} {p.transport?.type ? `• ${p.transport?.type}` : ''}
+                  {packages.map((pkg) => (
+                    <SelectItem key={pkg.identifier || ''} value={pkg.identifier || ''}>
+                      {pkg.identifier} {pkg.version ? `@${pkg.version}` : ''} {pkg.transport?.type ? `• ${pkg.transport?.type}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -324,7 +290,7 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
             </div>
           </div>
         )}
-        {hasRemote && (
+        {installMode === 'remote' && hasRemote && (
           <div className="flex items-center gap-2 w-full">
             <span className="text-sm text-muted-foreground flex-shrink-0">Remote:</span>
             <div className="flex-1 min-w-0">
@@ -333,9 +299,9 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-4rem)]">
-                  {remotes.map((r, i) => (
-                    <SelectItem key={`${r.url ?? i}-${i}`} value={String(i)}>
-                      {r.type || 'remote'}{r.url ? ` • ${r.url}` : ''}
+                  {remotes.map((remote, index) => (
+                    <SelectItem key={`${remote.url ?? index}-${index}`} value={String(index)}>
+                      {remote.type || 'remote'}{remote.url ? ` • ${remote.url}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -343,23 +309,56 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
             </div>
           </div>
         )}
+        {activeBuild.unavailableReason && (
+          <div className="text-xs text-[var(--vscode-errorForeground)]">{activeBuild.unavailableReason}</div>
+        )}
+        {installStatus && !installError && (
+          <div className="text-xs text-[var(--vscode-editor-foreground)]">{installStatus}</div>
+        )}
+        {installError && (
+          <div className="space-y-2 text-xs text-[var(--vscode-errorForeground)]">
+            <div>{installError.message}</div>
+            {installError.missingCli && (
+              <div className="space-y-2">
+                <div>
+                  Install the Claude CLI and try again. See the{' '}
+                  <a
+                    href={CLAUDE_DOCS_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-500 hover:underline"
+                  >
+                    installation guide
+                  </a>
+                  .
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={onCopyCommand}
+                    className="bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)]"
+                  >
+                    Copy CLI Command
+                  </Button>
+                  {copyFeedback === 'copied' && <span className="text-[var(--vscode-editor-foreground)]">Copied!</span>}
+                  {copyFeedback === 'error' && (
+                    <span className="text-[var(--vscode-errorForeground)]">Unable to copy. Copy manually from the docs.</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
-      <CardFooter className="pt-2 pb-3 border-t space-x-2">
+      <CardFooter className="pt-2 pb-3 border-t">
         <Button
-          variant={"outline"}
-          onClick={onInstallLocal}
-          disabled={localDisabled || isInstallingLocal}
+          variant="outline"
+          onClick={onInstall}
+          disabled={isInstallDisabled}
           className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isInstallingLocal ? 'Installing…' : 'Install Local'}
-        </Button>
-        <Button
-          variant={"outline"}
-          onClick={onInstallRemote}
-          disabled={remoteDisabled || isInstallingRemote}
-          className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isInstallingRemote ? 'Installing…' : 'Install Remote'}
+          {buttonLabel}
         </Button>
       </CardFooter>
     </Card>
