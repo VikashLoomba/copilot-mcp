@@ -199,20 +199,30 @@ async function runClaudeCliTask(
         transport: InstallTransport,
         config: Record<string, unknown>,
 ): Promise<void> {
-        const claudeBinary = "claude";
-        const configJson = JSON.stringify(config);
-		outputLogger.info("Config", config);
+	const claudeBinary = "claude";
+	const configJson = JSON.stringify(config);
+	outputLogger.info("Config", config);
 
-		const shellExecution = vscode.window.createTerminal({
-			name: `Claude MCP Install (${name})`,
-		});
-		
-		shellExecution.show();
-		shellExecution.sendText(`${claudeBinary} mcp add-json ${name} '${configJson}'`);
+	const shellExecution = vscode.window.createTerminal({
+		name: `Claude MCP Install (${name})`,
+	});
 
+	shellExecution.show();
+	const command = `${claudeBinary} mcp add-json ${name} '${configJson}'`;
+	shellExecution.sendText(command);
+
+	void vscode.window.showInformationMessage(
+		"Claude CLI install started. See Terminal Output for progress.",
+	);
+
+	try {
+		await vscode.env.clipboard.writeText(command);
 		void vscode.window.showInformationMessage(
-			"Claude CLI install started. See Terminal Output for progress.",
+			"Claude CLI command copied to your clipboard in case you need to rerun it if the install fails.",
 		);
+	} catch (clipboardError) {
+		outputLogger.warn("Failed to copy Claude CLI command to clipboard", clipboardError);
+	}
 }
 
 
