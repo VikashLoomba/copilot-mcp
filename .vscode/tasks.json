@@ -6,7 +6,6 @@
 		{
             "label": "watch",
             "dependsOn": [
-                "npm: watch:tsc",
                 "npm: watch:esbuild",
                 "npm: watch:webview"
             ],
@@ -32,11 +31,11 @@
         },
 		{
             "type": "npm",
-            "script": "watch:tsc",
+            "script": "watch:esbuild",
             "group": "build",
-            "problemMatcher": "$tsc-watch",
+            "problemMatcher": "$esbuild-watch",
             "isBackground": true,
-            "label": "npm: watch:tsc",
+            "label": "npm: watch:esbuild",
             "presentation": {
                 "group": "watch",
                 "reveal": "never"

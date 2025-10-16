@@ -551,12 +551,20 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			"assets",
 			"index.js",
 		]);
+		const assetBaseUri = getUri(webview, this._extensionUri, [
+			"web",
+			"dist",
+			"assets",
+		]);
 		webview.options = {
 			enableScripts: true,
 			localResourceRoots: [this._extensionUri],
 		};
 
 		const nonce = getNonce();
+		const initialState = {
+			assetBaseUri: assetBaseUri.toString(),
+		};
 		return /*html*/ `
         <!DOCTYPE html>
         <html lang="en">
@@ -569,6 +577,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		  </head>
 		  <body>
 			<div id="root"></div>
+			<script nonce="${nonce}">window.__MCP_WEBVIEW__ = ${JSON.stringify(initialState)};</script>
 			<script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 		  </body>
 		</html>

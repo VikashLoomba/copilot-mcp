@@ -2,7 +2,7 @@
 
 *Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.84) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
 
-## Version 0.0.86 – Clipboard-Friendly Claude Installs ✂️
+## Version 0.0.86 + 0.0.87 – Clipboard-Friendly Claude Installs ✂️
 
 - Claude CLI installs now copy the generated command to your clipboard and surface a dedicated notification so you can rerun it quickly if the install fails.
 

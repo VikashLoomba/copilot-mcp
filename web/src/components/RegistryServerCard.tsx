@@ -31,6 +31,32 @@ import {
   createClaudeAddJsonCommand,
 } from "@/utils/registryInstall";
 
+import defaultVscodeIcon from "@/assets/vscode.svg?url";
+import defaultClaudeIcon from "@/assets/claude.svg?url";
+
+declare global {
+  interface Window {
+    __MCP_WEBVIEW__?: {
+      assetBaseUri?: string;
+    };
+  }
+}
+
+const resolveIcon = (filename: string, fallback: string) => {
+  if (typeof window === "undefined") return fallback;
+  const base = window.__MCP_WEBVIEW__?.assetBaseUri;
+  if (!base) return fallback;
+  try {
+    const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+    return new URL(filename, normalizedBase).toString();
+  } catch {
+    return fallback;
+  }
+};
+
+const vscodeIcon = resolveIcon("vscode.svg", defaultVscodeIcon);
+const claudeIcon = resolveIcon("claude.svg", defaultClaudeIcon);
+
 const CLAUDE_DOCS_URL =
   "https://github.com/vikashloomba/copilot-mcp/blob/main/mcp.md#add-mcp-servers-from-json-configuration";
 
@@ -123,6 +149,8 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
   const websiteUrl = server?.websiteUrl;
 
   const programLabel = programTarget === 'vscode' ? 'VS Code' : 'Claude Code';
+  const programIcon = programTarget === 'vscode' ? vscodeIcon : claudeIcon;
+  const programIconAlt = programTarget === 'vscode' ? 'VS Code logo' : 'Claude logo';
   const buttonLabel = isInstalling
     ? `Installing in ${programLabel}…`
     : installMode === 'package'
@@ -228,16 +256,18 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
             <ToggleGroupItem
               value="vscode"
               aria-label="Install in VS Code"
-              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0"
+              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0 flex items-center gap-2"
             >
-              VS Code
+              <img src={vscodeIcon} alt="VS Code logo" className="w-4 h-4" />
+              <span>VS Code</span>
             </ToggleGroupItem>
             <ToggleGroupItem
               value="claude"
               aria-label="Install in Claude Code"
-              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0"
+              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0 flex items-center gap-2"
             >
-              Claude Code
+              <img src={claudeIcon} alt="Claude logo" className="w-4 h-4" />
+              <span>Claude Code</span>
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
@@ -358,7 +388,10 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
           disabled={isInstallDisabled}
           className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {buttonLabel}
+          <span className="flex items-center justify-center gap-2">
+            <img src={programIcon} alt={programIconAlt} className="w-4 h-4" />
+            <span>{buttonLabel}</span>
+          </span>
         </Button>
       </CardFooter>
     </Card>
