@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { searchMcpServers2 } from "../utilities/repoSearch";
-import { type TelemetryReporter } from "@vscode/extension-telemetry";
 import { openMcpInstallUri, readmeExtractionRequest } from "../McpAgent";
 import { 
 	logWebviewSearch, 
@@ -41,7 +40,7 @@ import type {
 import axios from "axios";
 import { outputLogger } from "../utilities/outputLogger";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
-
+import { spawn } from "node:child_process";
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
 	folder: vscode.WorkspaceFolder
@@ -203,26 +202,82 @@ async function runClaudeCliTask(
 	const configJson = JSON.stringify(config);
 	outputLogger.info("Config", config);
 
-	const shellExecution = vscode.window.createTerminal({
-		name: `Claude MCP Install (${name})`,
-	});
-
-	shellExecution.show();
-	const command = `${claudeBinary} mcp add-json ${name} '${configJson}'`;
-	shellExecution.sendText(command);
+	const commandArgs = ["mcp", "add-json", name, configJson];
+	const clipboardCommand = `${claudeBinary} mcp add-json ${JSON.stringify(name)} ${JSON.stringify(configJson)}`;
 
 	void vscode.window.showInformationMessage(
-		"Claude CLI install started. See Terminal Output for progress.",
+		"Claude Code install started. Running command in the background...",
 	);
 
-	try {
-		await vscode.env.clipboard.writeText(command);
-		void vscode.window.showInformationMessage(
-			"Claude CLI command copied to your clipboard in case you need to rerun it if the install fails.",
-		);
-	} catch (clipboardError) {
-		outputLogger.warn("Failed to copy Claude CLI command to clipboard", clipboardError);
+	const pathSeparator = process.platform === "win32" ? ";" : ":";
+	const basePath = process.env.PATH ?? "";
+	const pathEntries = basePath.split(pathSeparator).filter(Boolean);
+	if (process.platform === "darwin") {
+		for (const candidate of ["/opt/homebrew/bin", "/usr/local/bin"]) {
+			if (!pathEntries.includes(candidate)) {
+				pathEntries.unshift(candidate);
+			}
+		}
 	}
+	const env = {
+		...process.env,
+		PATH: pathEntries.join(pathSeparator),
+	};
+
+	let stdout = "";
+	let stderr = "";
+
+	await new Promise<void>((resolve, reject) => {
+		const child = spawn(claudeBinary, commandArgs, { env });
+
+		if (child.stdout) {
+			child.stdout.on("data", (chunk: Buffer) => {
+				stdout += chunk.toString();
+			});
+		}
+
+		if (child.stderr) {
+			child.stderr.on("data", (chunk: Buffer) => {
+				stderr += chunk.toString();
+			});
+		}
+
+		child.on("error", (error) => {
+			outputLogger.error("Failed to start Claude CLI", error);
+			reject(error);
+		});
+
+		child.on("close", async (code) => {
+			const messageParts: string[] = [];
+			messageParts.push(`Claude CLI exited with code ${code ?? "unknown"}.`);
+			if (stdout.trim()) {
+				messageParts.push(`\n${stdout.trim()}`);
+			}
+			if (stderr.trim()) {
+				messageParts.push(`\n${stderr.trim()}`);
+			}
+
+			if (code === 0) {
+				void vscode.window.showInformationMessage(messageParts.join("\n\n"));
+				resolve();
+			} else {
+				try {
+					const selectedAction = await vscode.window.showInformationMessage(messageParts.join("\n\n"), "Copy Command to Clipboard");
+					if (selectedAction === "Copy Command to Clipboard") {
+						await vscode.env.clipboard.writeText(clipboardCommand);
+						void vscode.window.showInformationMessage(
+							"Claude Code MCP install command copied to your clipboard for manual install.",
+						);
+					}
+				} catch (clipboardError) {
+					outputLogger.warn("Failed to copy Claude CLI command to clipboard", clipboardError);
+				}
+				const error = new Error(`Claude CLI exited with code ${code}`);
+				outputLogger.error("Claude CLI exited with non-zero code", error, { stdout, stderr });
+				reject(error);
+			}
+		});
+	});
 }
 
 
