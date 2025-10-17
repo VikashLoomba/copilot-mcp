@@ -53,22 +53,38 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(logger, { dispose: shutdownLogs });
 	context.subscriptions.push(telemetryReporter);
 	// console.dir(await vscode.authentication.getAccounts('github'), {depth: null});
-	outputLogger.debug("Getting GitHub authentication session");
-	const session = await vscode.authentication.getSession(
-		GITHUB_AUTH_PROVIDER_ID,
-		SCOPES,
-		{ createIfNone: true }
-	);
+    outputLogger.debug("Checking for existing GitHub authentication session");
+    let session: vscode.AuthenticationSession | undefined;
+    try {
+        session = await vscode.authentication.getSession(
+            GITHUB_AUTH_PROVIDER_ID,
+            SCOPES,
+            { createIfNone: false }
+        );
+    } catch (error) {
+        outputLogger.warn("Failed to retrieve existing GitHub session", error as Error);
+    }
 	
-	outputLogger.info("Initializing Copilot MCP LM Provider");
-	const copilot = await CopilotChatProvider.initialize(context);
-	const models = await copilot.getModels();
-	outputLogger.info("Available Copilot models", models.map((m: any) => m.id));
+    outputLogger.info("Configuring Copilot MCP LM Provider");
+    const copilot = await CopilotChatProvider.configure(context);
+    const initialized = await copilot.tryEnsureInitialized();
+    if (initialized) {
+        try {
+            const models = await copilot.getModels();
+            outputLogger.info("Available Copilot models", models.map((m: any) => m.id));
+        } catch (modelError) {
+            outputLogger.warn("Failed to retrieve Copilot models", modelError as Error);
+        }
+    } else {
+        outputLogger.debug("Copilot provider not initialized yet; will initialize on demand");
+    }
 	
 	// Initialize standardized telemetry context  
 	const extensionVersion = vscode.extensions.getExtension('AutomataLabs.copilot-mcp')?.packageJSON?.version || 'unknown';
-	initializeContext(session, extensionVersion);
-	setCommonLogAttributes({ ...session.account });
+    initializeContext(session, extensionVersion);
+    if (session) {
+        setCommonLogAttributes({ ...session.account });
+    }
 	
 	// Initialize CloudMCP indexer
 	outputLogger.info("Initializing CloudMCP indexer");
@@ -106,10 +122,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable, showLogsCommand);
 
 	outputLogger.debug("Creating CopilotMcpViewProvider");
-	const provider = new CopilotMcpViewProvider(
-		context.extensionUri,
-		session.accessToken
-	);
+    const provider = new CopilotMcpViewProvider(
+        context.extensionUri
+    );
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
 			CopilotMcpViewProvider.viewType,

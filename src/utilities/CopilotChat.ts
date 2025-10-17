@@ -14,24 +14,29 @@ export class CopilotChatProvider {
 	private static instance: CopilotChatProvider;
 	private session: vscode.AuthenticationSession | undefined;
 	private copilotToken: string | undefined;
-	private _headers: Record<string, string> = {
+	private readonly defaultHeaders: Record<string, string> = {
 		"Editor-Version": `vscode/${vscode.version}`,
 		"Editor-Plugin-Version": "copilot-chat/0.27.0",
 		"X-GitHub-Api-Version": "2025-04-01",
 	};
+	private _headers: Record<string, string> = { ...this.defaultHeaders };
 	private _baseUrl = `https://api.githubcopilot.com`;
 	private _baseModel = ""; // Will be set dynamically from available models
 	public modelDetails: any = null;
 	private _modelCapabilities: any = null; // Store model capabilities
-	private _provider!: AxAI;
+	private _provider?: AxAI<string>;
+	private initializationPromise: Promise<void> | undefined;
 
 	private _initialized = false;
 
-	public get provider() {
+	public get provider(): AxAI<string> {
+		if (!this._initialized || !this.copilotToken) {
+			throw new Error("CopilotChatProvider is not initialized");
+		}
 		if (!this._provider) {
 			this.provider = ai({
 				name: 'openai',
-				apiKey: this.copilotToken!,
+				apiKey: this.copilotToken,
 				apiURL: this.baseUrl,
 				options: {
 					fetch: (input: RequestInfo | URL, init?: RequestInit) => {
@@ -44,15 +49,12 @@ export class CopilotChatProvider {
 				},
 				config: {
 					model: AxAIOpenAIModel.GPT5Mini,
-					
 				},
-				
 			});
-			
 		}
-		return this._provider;
+		return this._provider!;
 	}
-	public set provider(provider) {
+	public set provider(provider: AxAI<string>) {
 		this._provider = provider;
 	}
 
@@ -71,12 +73,12 @@ export class CopilotChatProvider {
 		return CopilotChatProvider.instance;
 	}
 
-	// Static method to initialize the singleton instance
-	public static async initialize(
+	// Static method to configure the singleton instance without forcing authentication
+	public static async configure(
 		context: vscode.ExtensionContext
 	): Promise<CopilotChatProvider> {
 		const instance = CopilotChatProvider.getInstance();
-		await instance._initialize(context);
+		await instance._configure(context);
 		return instance;
 	}
 
@@ -85,47 +87,80 @@ export class CopilotChatProvider {
 		return this._initialized;
 	}
 
-	// Renamed to _initialize to avoid confusion with the static method
-	private async _initialize(context: vscode.ExtensionContext): Promise<void> {
-		this._context = context;
-		this.registerListeners(context);
+	private async _configure(context: vscode.ExtensionContext): Promise<void> {
+		if (!this._context) {
+			this._context = context;
+			this.registerListeners(context);
+		}
+		// Attempt silent initialization for returning users; ignore failures
+		await this.ensureInitialized({ interactive: false });
+	}
 
-		if (!this.session) {
-			try {
-				this.session = await vscode.authentication.getSession(
-					GITHUB_AUTH_PROVIDER_ID,
-					SCOPES,
-					{ createIfNone: true }
-				);
-			} catch (error) {
-				console.error(
-					"Failed to get GitHub authentication session:",
-					error
-				);
-				
-				// Log authentication failure with standardized telemetry
+	public async tryEnsureInitialized(): Promise<boolean> {
+		await this.ensureInitialized({ interactive: false });
+		return this._initialized;
+	}
+
+	public async ensureInitialized(options?: { interactive?: boolean }): Promise<void> {
+		const interactive = options?.interactive ?? true;
+		if (this._initialized) {
+			return;
+		}
+		if (!this._context) {
+			throw new Error("CopilotChatProvider has not been configured");
+		}
+		if (this.initializationPromise) {
+			await this.initializationPromise;
+			return;
+		}
+		this.initializationPromise = this.initializeSession(interactive);
+		try {
+			await this.initializationPromise;
+		} finally {
+			this.initializationPromise = undefined;
+		}
+	}
+
+	public async getProvider(options?: { interactive?: boolean }): Promise<AxAI> {
+		await this.ensureInitialized(options);
+		return this.provider;
+	}
+
+	private async initializeSession(interactive: boolean): Promise<void> {
+		try {
+			const session = await vscode.authentication.getSession(
+				GITHUB_AUTH_PROVIDER_ID,
+				SCOPES,
+				{ createIfNone: interactive }
+			);
+			if (!session) {
+				// Silent initialization failed; wait for user-triggered call.
+				return;
+			}
+			this.session = session;
+			this.copilotToken = undefined;
+		this._provider = undefined;
+			this._headers = { ...this.defaultHeaders };
+			await this.getCopilotToken(this._context!);
+			const existingSessions = await vscode.authentication.getAccounts(
+				GITHUB_AUTH_PROVIDER_ID
+			);
+			console.log("existingSessions", existingSessions);
+			this._initialized = true;
+			console.log("CopilotChatProvider initialization complete");
+		} catch (error) {
+			if (interactive) {
 				logError(error as Error, 'github-authentication', {
 					provider: GITHUB_AUTH_PROVIDER_ID,
 					scopes: SCOPES.join(','),
-					createIfNone: true,
+					createIfNone: interactive,
 				});
-				
 				vscode.window.showErrorMessage(
 					"GitHub authentication failed. Please sign in to GitHub."
 				);
-				return;
+				throw error;
 			}
 		}
-		await this.getCopilotToken(context);
-
-		const existingSessions = await vscode.authentication.getAccounts(
-			GITHUB_AUTH_PROVIDER_ID
-		);
-		console.log("existingSessions", existingSessions);
-
-		// Set initialized flag to true
-		this._initialized = true;
-		console.log("CopilotChatProvider initialization complete");
 	}
 
 	private async getCopilotToken(
@@ -316,7 +351,16 @@ export class CopilotChatProvider {
 		context.subscriptions.push(
 			vscode.authentication.onDidChangeSessions(async (e) => {
 				if (e.provider.id === GITHUB_AUTH_PROVIDER_ID) {
-					// await this.setOctokit();
+					this.session = undefined;
+					this.copilotToken = undefined;
+		this._provider = undefined;
+					this._headers = { ...this.defaultHeaders };
+					this._initialized = false;
+					try {
+						await this.ensureInitialized({ interactive: false });
+					} catch (sessionError) {
+						console.warn("Silent GitHub session refresh failed", sessionError);
+					}
 				}
 			})
 		);
@@ -353,6 +397,9 @@ export class CopilotChatProvider {
 	}
 
 	public async getModels() {
+		if (!this._initialized) {
+			throw new Error("CopilotChatProvider is not initialized");
+		}
 		try {
 			const response = await fetch(`${this._baseUrl}/models`, {
 				headers: this._headers,
@@ -371,8 +418,9 @@ export class CopilotChatProvider {
 
 			const data = await response.json();
 			return data.data;
-		} catch {
+		} catch (error) {
 			console.log("getModels failed");
+			throw error;
 		}
 	}
 

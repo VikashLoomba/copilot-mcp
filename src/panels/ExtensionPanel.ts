@@ -40,7 +40,7 @@ import type {
 } from "../shared/types/rpcTypes";
 import axios from "axios";
 import { outputLogger } from "../utilities/outputLogger";
-import { resolve } from "dns";
+import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
 
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
@@ -231,8 +231,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	octokit: any;
 
 	constructor(
-		private readonly _extensionUri: vscode.Uri,
-		private readonly _accessToken: string	) {}
+		private readonly _extensionUri: vscode.Uri
+	) {}
 
 	resolveWebviewView(
 		webviewView: vscode.WebviewView,
@@ -529,9 +529,27 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	async getOctokit() {
+		if (this.octokit) {
+			return this.octokit;
+		}
+		let session: vscode.AuthenticationSession | undefined;
+		try {
+			session = await vscode.authentication.getSession(
+				GITHUB_AUTH_PROVIDER_ID,
+				SCOPES,
+				{ createIfNone: true }
+			);
+		} catch (error) {
+			outputLogger.warn("Failed to acquire GitHub session for Octokit", error as Error);
+			throw new Error("GitHub authentication is required to continue.");
+		}
+		const accessToken = session?.accessToken;
+		if (!accessToken) {
+			throw new Error("GitHub authentication is required to continue.");
+		}
 		const Octokit = await import("octokit");
 		this.octokit = new Octokit.Octokit({
-			auth: this._accessToken,
+			auth: accessToken,
 		});
 		return this.octokit;
 	}

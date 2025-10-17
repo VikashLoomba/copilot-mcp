@@ -6,7 +6,7 @@ import {
 	SCOPES,
 } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
-import { AxAgent, AxFunction, ax, f, AxFunctionProcessor, agent } from "@ax-llm/ax";
+import { AxAgent, AxFunction, AxAI, ax, f, AxFunctionProcessor, agent } from "@ax-llm/ax";
 import { getReadme, searchMcpServers2 } from "./utilities/repoSearch";
 import { 
 	logChatSearch, 
@@ -19,6 +19,22 @@ import {
 } from "./telemetry/standardizedTelemetry";
 import { TelemetryEvents } from "./telemetry/types";
 import { outputLogger } from "./utilities/outputLogger";
+
+async function configureCopilotProvider(debug: boolean) {
+	const copilot = CopilotChatProvider.getInstance();
+	const provider = await copilot.getProvider({ interactive: true });
+	provider.setOptions({
+		debug,
+		fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+			init!.headers = {
+				...init?.headers,
+				...copilot.headers,
+			};
+			return fetch(input, init);
+		},
+	});
+	return { provider, copilot };
+}
 
 const getRepoReadme: AxFunction = {
 	func: getReadme,
@@ -165,19 +181,13 @@ export const handler: vscode.ChatRequestHandler = async (
 		prompt: request.prompt 
 	});
 	
-	const copilot = CopilotChatProvider.getInstance();
-	const provider = copilot.provider;
-	provider.setOptions(
-		{ 
-			debug: false, 
-			fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-				init!.headers = {
-					...init?.headers,
-					...copilot.headers,
-				};
-				return fetch(input, init);
-			} 
-	});
+	let provider: AxAI;
+	try {
+		({ provider } = await configureCopilotProvider(false));
+	} catch (error) {
+		outputLogger.warn("Copilot provider unavailable for chat handler", error as Error);
+		throw new Error("GitHub authentication is required to use AI-assisted chat features.");
+	}
 
 	const session = await vscode.authentication.getSession(
 		GITHUB_AUTH_PROVIDER_ID,
@@ -329,25 +339,16 @@ class GitHubSearchTool
 		// Create the search coordinator agent with composition
 		this.searchCoordinatorAgent = this.createSearchCoordinatorAgent();
 	}
-	
+
 	private createSearchCoordinatorAgent(): ReturnType<typeof agent> {
 		// Create query generator agent
 		const queryGeneratorAgent = createQueryGeneratorAgent();
-		const copilot = CopilotChatProvider.getInstance();
-		const provider = copilot.provider;
-		outputLogger.info("headers: ", copilot.headers);
-		provider.setOptions({ debug: true, fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-			init!.headers = {
-				...init?.headers,
-				...copilot.headers,
-			};
-			return fetch(input, init);
-		} });
 		// Create the search and process function
 		const generateAndSearchRepos: AxFunction = {
 			name: "generateAndSearchRepos",
 			description: "Generate a search query and search for MCP repositories",
 			func: async (args: { originalUserMessage: string }) => {
+				const { provider } = await configureCopilotProvider(true);
 				
 				// Use the query generator agent
 				const queryResult = await queryGeneratorAgent.forward(
@@ -387,19 +388,7 @@ class GitHubSearchTool
 	
 	async invoke(options: vscode.LanguageModelToolInvocationOptions<{ userQuery: string; }>): Promise<vscode.LanguageModelToolResult> {
 		this.stream.progress("Beginning search for installable MCP servers...");
-		const copilot = CopilotChatProvider.getInstance();
-		const provider = copilot.provider;
-		provider.setOptions(
-		{ 
-			debug: false, 
-			fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-				init!.headers = {
-					...init?.headers,
-					...copilot.headers,
-				};
-				return fetch(input, init);
-			} 
-		});
+		const { provider } = await configureCopilotProvider(false);
 		outputLogger.info("GitHubSearchTool invoked", { options });
 		
 		try {
@@ -476,25 +465,13 @@ class GitHubSearchTool
 }
 
 export async function readmeExtractionRequest(readme: string) {
-	// Try to get GitHub token from VSCode authentication API using the same scopes as extension activation
-	const session = await vscode.authentication.getSession(GITHUB_AUTH_PROVIDER_ID, SCOPES, { createIfNone: false });
-	const accessToken = session?.accessToken;
-	if (!accessToken) {
-		throw new Error("Copilot not set up.");
+	let provider: AxAI;
+	try {
+		({ provider } = await configureCopilotProvider(false));
+	} catch (error) {
+		outputLogger.warn("Copilot provider unavailable for README extraction", error as Error);
+		throw new Error("GitHub authentication is required to use AI-assisted setup.");
 	}
-	const copilot = CopilotChatProvider.getInstance();
-	const provider = copilot.provider;
-	provider.setOptions(
-		{ 
-			debug: false, 
-			fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-				init!.headers = {
-					...init?.headers,
-					...copilot.headers,
-				};
-				return fetch(input, init);
-			} 
-	});
 
 	const extractor = ax(`
 		"Extracts the MCP server configuration from a README.md file and returns the necessary information to run it."
