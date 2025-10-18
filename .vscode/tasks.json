@@ -6,8 +6,8 @@
 		{
             "label": "watch",
             "dependsOn": [
-                "npm: watch:esbuild",
-                "npm: watch:webview"
+                "npm: watch:tsc",
+                "npm: watch:esbuild"
             ],
             "presentation": {
                 "reveal": "never"
@@ -31,35 +31,11 @@
         },
 		{
             "type": "npm",
-            "script": "watch:esbuild",
+            "script": "watch:tsc",
             "group": "build",
-            "problemMatcher": "$esbuild-watch",
+            "problemMatcher": "$tsc-watch",
             "isBackground": true,
-            "label": "npm: watch:esbuild",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-        {
-            "type": "npm",
-            "script": "watch:webview",
-            "group": "build",
-            "problemMatcher": {
-                "pattern": {
-                    "regexp": ".",
-                    "file": 1,
-                    "location": 2,
-                    "message": 3
-                },
-                "background": {
-                    "activeOnStart": true,
-                    "beginsPattern": "^\\s*VITE v",
-                    "endsPattern": "\\s*➜\\s*Local:\\s*http://localhost:\\d+"
-                }
-            },
-            "isBackground": true,
-            "label": "npm: watch:webview",
+            "label": "npm: watch:tsc",
             "presentation": {
                 "group": "watch",
                 "reveal": "never"
@@ -83,19 +59,6 @@
 				"npm: watch-tests"
 			],
 			"problemMatcher": []
-		},
-		{
-			"label": "stop watch tasks",
-			"type": "shell",
-			"command": "bash",
-			"args": [
-				"-lc",
-				"pkill -f \"node esbuild.js --watch\" >/dev/null 2>&1 || true; pkill -f \"vite\" >/dev/null 2>&1 || true"
-			],
-			"problemMatcher": [],
-			"presentation": {
-				"reveal": "never"
-			}
 		}
 	]
 }

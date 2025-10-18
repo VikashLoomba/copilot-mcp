@@ -15,8 +15,7 @@
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
 			],
-			"preLaunchTask": "watch",
-			"postDebugTask": "stop watch tasks"
+			"preLaunchTask": "${defaultBuildTask}"
 		}
 	]
 }
