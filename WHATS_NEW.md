@@ -1,10 +1,14 @@
 # What's New in Copilot MCP!
 
-*Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.84) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
+*Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
+
+## Version 0.0.88 - Codex CLI MCP Installer
+*(October 17 2025)*
+We are excited to introduce **Codex CLI MCP Installer** support in Copilot MCP! This new feature allows users to seamlessly install MCP servers directly into **Codex CLI** from Copilot MCP.
 
 ## Version 0.0.86 + 0.0.87 – Clipboard-Friendly Claude Installs ✂️
 
-- Claude CLI installs now copy the generated command to your clipboard and surface a dedicated notification so you can rerun it quickly if the install fails.
+- Claude Code installer wil now copy the generated command to your clipboard in case the install fails.
 
 ## Version 0.0.85 – Claude Code, Bug Fixes, and Reliability Improvements 🛠
 
