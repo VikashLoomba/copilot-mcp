@@ -1,12 +1,12 @@
 // src/utilities/logging.ts
-import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+import { logs } from "@opentelemetry/api-logs";
 import {
 	LoggerProvider,
 	BatchLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { Resource, resourceFromAttributes } from "@opentelemetry/resources";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 
 const exporter = new OTLPLogExporter({
 	// Explicit URL → the exporter will **not** append /v1/logs when this is set
@@ -16,7 +16,7 @@ const exporter = new OTLPLogExporter({
 
 const provider = new LoggerProvider({
 	resource: resourceFromAttributes({
-		[SemanticResourceAttributes.SERVICE_NAME]: "copilot-mcp-extension",
+		[ATTR_SERVICE_NAME]: "copilot-mcp-extension",
 	}),
 });
 
