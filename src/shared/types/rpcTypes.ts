@@ -24,10 +24,13 @@ export type InstallTransport = "stdio" | "http" | "sse";
 
 export type InstallMode = "package" | "remote";
 
-export interface ClaudeInstallRequest extends InstallCommandPayload {
+export interface CliInstallRequest extends InstallCommandPayload {
         transport: InstallTransport;
         mode: InstallMode;
 }
+
+export type ClaudeInstallRequest = CliInstallRequest;
+export type CodexInstallRequest = CliInstallRequest;
 
 export const searchServersType: RequestType<
 	{ query: string; 
@@ -88,6 +91,10 @@ export const installFromConfigType: RequestType<InstallCommandPayload, boolean> 
 
 export const installClaudeFromConfigType: RequestType<ClaudeInstallRequest, void> = {
         method: "installClaudeFromConfig",
+};
+
+export const installCodexFromConfigType: RequestType<CodexInstallRequest, void> = {
+        method: "installCodexFromConfig",
 };
 
 // Official Registry search (proxied via extension to avoid CORS)

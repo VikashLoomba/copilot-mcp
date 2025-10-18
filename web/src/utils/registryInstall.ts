@@ -11,7 +11,7 @@ import type {
   RegistryTransport,
 } from "@/types/registry";
 
-export type ProgramTarget = "vscode" | "claude";
+export type ProgramTarget = "vscode" | "claude" | "codex";
 
 export interface RegistryInstallBuildResult {
   payload?: InstallCommandPayload;

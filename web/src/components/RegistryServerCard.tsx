@@ -14,6 +14,7 @@ import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
 import {
   installClaudeFromConfigType,
+  installCodexFromConfigType,
   installFromConfigType,
   type InstallMode,
 } from "../../../src/shared/types/rpcTypes";
@@ -33,6 +34,7 @@ import {
 
 import defaultVscodeIcon from "@/assets/vscode.svg?url";
 import defaultClaudeIcon from "@/assets/claude.svg?url";
+import defaultCodexIcon from "@/assets/codex.svg?url";
 
 declare global {
   interface Window {
@@ -56,6 +58,7 @@ const resolveIcon = (filename: string, fallback: string) => {
 
 const vscodeIcon = resolveIcon("vscode.svg", defaultVscodeIcon);
 const claudeIcon = resolveIcon("claude.svg", defaultClaudeIcon);
+const codexIcon = resolveIcon("codex.svg", defaultCodexIcon);
 
 const CLAUDE_DOCS_URL =
   "https://github.com/vikashloomba/copilot-mcp/blob/main/mcp.md#add-mcp-servers-from-json-configuration";
@@ -148,36 +151,57 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
   const repoUrl = server?.repository?.url;
   const websiteUrl = server?.websiteUrl;
 
-  const programLabel = programTarget === 'vscode' ? 'VS Code' : 'Claude Code';
-  const programIcon = programTarget === 'vscode' ? vscodeIcon : claudeIcon;
-  const programIconAlt = programTarget === 'vscode' ? 'VS Code logo' : 'Claude logo';
-  const buttonLabel = isInstalling
-    ? `Installing in ${programLabel}…`
-    : installMode === 'package'
-      ? `Install Package in ${programLabel}`
-      : programTarget === 'claude'
-        ? `Add Remote to ${programLabel}`
-        : `Install Remote in ${programLabel}`;
+  const programMeta: Record<ProgramTarget, { name: string; icon: string; alt: string }> = {
+    vscode: { name: 'VS Code', icon: vscodeIcon, alt: 'VS Code logo' },
+    claude: { name: 'Claude Code', icon: claudeIcon, alt: 'Claude logo' },
+    codex: { name: 'Codex', icon: codexIcon, alt: 'Codex logo' },
+  };
 
-  const isInstallDisabled =
+  const baseInstallDisabled =
     isInstalling ||
     !activeBuild.payload ||
     Boolean(activeBuild.unavailableReason) ||
     (installMode === 'package' && !selectedPackage) ||
-    (installMode === 'remote' && (!hasRemote || !selectedRemote)) ||
-    (programTarget === 'claude' && !activeBuild.transport);
+    (installMode === 'remote' && (!hasRemote || !selectedRemote));
 
-  const onInstall = async () => {
+  const getButtonLabel = (target: ProgramTarget) => {
+    const label = programMeta[target].name;
+    if (isInstalling && programTarget === target) {
+      return `Installing in ${label}…`;
+    }
+    if (installMode === 'package') {
+      return `Install Package in ${label}`;
+    }
+    if (target === 'vscode') {
+      return `Install Remote in ${label}`;
+    }
+    return `Add Remote to ${label}`;
+  };
+
+  const isButtonDisabled = (target: ProgramTarget) => {
+    if (baseInstallDisabled) {
+      return true;
+    }
+    if ((target === 'claude' || target === 'codex') && !activeBuild.transport) {
+      return true;
+    }
+    return false;
+  };
+
+  const onInstall = async (target: ProgramTarget) => {
     if (!activeBuild.payload) return;
 
+    setProgramTarget(target);
     setIsInstalling(true);
     setInstallError(null);
     setInstallStatus(null);
     setCopyFeedback('idle');
     setLastClaudeCommand(null);
 
+    const targetLabel = programMeta[target].name;
+
     try {
-      if (programTarget === 'vscode') {
+      if (target === 'vscode') {
         const success = await messenger.sendRequest(installFromConfigType, { type: 'extension' }, activeBuild.payload);
         if (success) {
           setInstallStatus('VS Code is opening the MCP install prompt.');
@@ -188,17 +212,25 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
       }
 
       if (!activeBuild.transport) {
-        setInstallError({ message: 'This install mode is not supported for Claude Code yet.' });
+        setInstallError({ message: `This install mode is not supported for ${targetLabel} yet.` });
         return;
       }
 
-      await messenger.sendRequest(installClaudeFromConfigType, { type: 'extension' }, {
-        ...activeBuild.payload,
-        transport: activeBuild.transport,
-        mode: installMode,
-      });
+      if (target === 'claude') {
+        await messenger.sendRequest(installClaudeFromConfigType, { type: 'extension' }, {
+          ...activeBuild.payload,
+          transport: activeBuild.transport,
+          mode: installMode,
+        });
+      } else {
+        await messenger.sendRequest(installCodexFromConfigType, { type: 'extension' }, {
+          ...activeBuild.payload,
+          transport: activeBuild.transport,
+          mode: installMode,
+        });
+      }
 
-      setInstallStatus('Installed! See Terminal Output for details.');
+      setInstallStatus(`Installed with ${targetLabel}! See Terminal Output for details.`);
     } catch (error) {
       console.error('Error during install', error);
       setInstallError({
@@ -240,36 +272,6 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
           {websiteUrl && (
             <a className="text-blue-500 hover:underline" href={websiteUrl} target="_blank" rel="noreferrer">Website</a>
           )}
-        </div>
-        <div className="flex items-center gap-2 w-full">
-          <span className="text-sm text-muted-foreground flex-shrink-0">Install to:</span>
-          <ToggleGroup
-            type="single"
-            value={programTarget}
-            onValueChange={(value) => {
-              if (value === 'vscode' || value === 'claude') {
-                setProgramTarget(value);
-              }
-            }}
-            className="gap-2"
-          >
-            <ToggleGroupItem
-              value="vscode"
-              aria-label="Install in VS Code"
-              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0 flex items-center gap-2"
-            >
-              <img src={vscodeIcon} alt="VS Code logo" className="w-4 h-4" />
-              <span>VS Code</span>
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="claude"
-              aria-label="Install in Claude Code"
-              className="text-xs px-2 py-1 rounded border border-transparent data-[state=on]:bg-[var(--vscode-list-activeSelectionBackground)] data-[state=on]:text-[var(--vscode-list-activeSelectionForeground)] data-[state=on]:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none focus-visible:ring-0 ring-0 flex items-center gap-2"
-            >
-              <img src={claudeIcon} alt="Claude logo" className="w-4 h-4" />
-              <span>Claude Code</span>
-            </ToggleGroupItem>
-          </ToggleGroup>
         </div>
         {modeSelectorVisible && (
           <div className="flex items-center gap-2 w-full">
@@ -382,17 +384,32 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
         )}
       </CardContent>
       <CardFooter className="pt-2 pb-3 border-t">
-        <Button
-          variant="outline"
-          onClick={onInstall}
-          disabled={isInstallDisabled}
-          className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="flex items-center justify-center gap-2">
-            <img src={programIcon} alt={programIconAlt} className="w-4 h-4" />
-            <span>{buttonLabel}</span>
-          </span>
-        </Button>
+        <div className="flex w-full items-center justify-start gap-2">
+          {(['vscode', 'claude', 'codex'] as ProgramTarget[]).map((target) => {
+            const meta = programMeta[target];
+            const label = getButtonLabel(target);
+            const disabled = isButtonDisabled(target);
+            const holdOpen = programTarget === target && isInstalling;
+            const textClasses = `${holdOpen ? 'max-w-[12rem] opacity-100 ml-2' : 'max-w-0 opacity-0'} pointer-events-none text-xs whitespace-nowrap transition-all duration-200 ease-in-out group-hover:max-w-[12rem] group-hover:opacity-100 group-hover:ml-2 group-focus-visible:max-w-[12rem] group-focus-visible:opacity-100 group-focus-visible:ml-2`;
+
+            return (
+              <Button
+                key={target}
+                variant="outline"
+                onClick={() => onInstall(target)}
+                disabled={disabled}
+                aria-label={label}
+                className="group relative flex items-center justify-start overflow-hidden rounded-md bg-[var(--vscode-button-background)] px-2 py-2 text-[var(--vscode-button-foreground)] transition-all duration-200 ease-in-out hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <img src={meta.icon} alt={meta.alt} className="w-4 h-4" />
+                <span className="sr-only">{label}</span>
+                <span aria-hidden="true" className={textClasses}>
+                  {label}
+                </span>
+              </Button>
+            );
+          })}
+        </div>
       </CardFooter>
     </Card>
   );

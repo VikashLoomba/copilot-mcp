@@ -29,6 +29,7 @@ import {
         previewReadmeType,
         installFromConfigType,
         installClaudeFromConfigType,
+        installCodexFromConfigType,
         registrySearchType,
 } from "../shared/types/rpcTypes";
 import type {
@@ -36,11 +37,13 @@ import type {
         InstallInput,
         InstallTransport,
         ClaudeInstallRequest,
+        CodexInstallRequest,
 } from "../shared/types/rpcTypes";
 import axios from "axios";
 import { outputLogger } from "../utilities/outputLogger";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
-import { spawn } from "node:child_process";
+import { spawn, execSync, exec, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
 	folder: vscode.WorkspaceFolder
@@ -193,43 +196,75 @@ async function performVscodeInstall(payload: InstallCommandPayload) {
         return !!(response && (response as any).success);
 }
 
-async function runClaudeCliTask(
-        name: string,
-        transport: InstallTransport,
-        config: Record<string, unknown>,
-): Promise<void> {
-	const claudeBinary = "claude";
-	const configJson = JSON.stringify(config);
-	outputLogger.info("Config", config);
-
-	const commandArgs = ["mcp", "add-json", name, configJson];
-	const clipboardCommand = `${claudeBinary} mcp add-json ${JSON.stringify(name)} ${JSON.stringify(configJson)}`;
-
-	void vscode.window.showInformationMessage(
-		"Claude Code install started. Running command in the background...",
-	);
-
+function createSpawnEnvWithAugmentedPath(): NodeJS.ProcessEnv {
 	const pathSeparator = process.platform === "win32" ? ";" : ":";
 	const basePath = process.env.PATH ?? "";
 	const pathEntries = basePath.split(pathSeparator).filter(Boolean);
+
 	if (process.platform === "darwin") {
-		for (const candidate of ["/opt/homebrew/bin", "/usr/local/bin"]) {
+		const homeDir = process.env.HOME ?? "";
+		const darwinCandidates = [
+			"/opt/homebrew/bin",
+			"/opt/homebrew/sbin",
+			"/usr/local/bin",
+			"/usr/local/sbin",
+			homeDir ? `${homeDir}/.local/bin` : undefined,
+			homeDir ? `${homeDir}/.bun/bin` : undefined,
+			homeDir ? `${homeDir}/Library/Application Support/Claude/bin` : undefined,
+			homeDir ? `${homeDir}/.claude/local/claude` : undefined,
+		];
+		for (const candidate of darwinCandidates) {
+			if (!candidate) {
+				continue;
+			}
 			if (!pathEntries.includes(candidate)) {
 				pathEntries.unshift(candidate);
 			}
 		}
 	}
-	const env = {
+
+	return {
 		...process.env,
 		PATH: pathEntries.join(pathSeparator),
 	};
+}
 
+function shellQuote(value: string): string {
+	if (!value) {
+		return "''";
+	}
+	if (/^[A-Za-z0-9._\/-]+$/.test(value)) {
+		return value;
+	}
+	return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+async function runClaudeCliTask(
+        name: string,
+        transport: InstallTransport,
+        config: Record<string, unknown>,
+): Promise<void> {
+	const homeDir = process.env.HOME ?? "";
+	const claudeDir = `${homeDir}/.claude/local`
+	const claudeBinary = existsSync(`${claudeDir}`) ? `${claudeDir}/claude` : "claude";
+	const configJson = JSON.stringify(config);
+	outputLogger.info("Config", config);
+
+	const commandArgs = ["mcp", "add-json", name, configJson];
+	const clipboardCommand = [claudeBinary, ...commandArgs].map(shellQuote).join(" ");
 	let stdout = "";
 	let stderr = "";
-
+	// first try and remove any existing server with the same name
+	const remove = spawnSync(claudeBinary, ["mcp", "remove", name])
+	outputLogger.info("Pre-remove existing server", { stdout: remove.stdout?.toString(), stderr: remove.stderr?.toString(), status: remove.status });
 	await new Promise<void>((resolve, reject) => {
-		const child = spawn(claudeBinary, commandArgs, { env });
-
+		const child = spawn(claudeBinary, commandArgs);
+		const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1);
+		statusBar.text = `$(sync~spin) Installing MCP Server '${name}'...`;
+		statusBar.tooltip = "Claude Code is running";
+		const scheduleDispose = () => {
+			setTimeout(() => statusBar.dispose(), 5000);
+		};
 		if (child.stdout) {
 			child.stdout.on("data", (chunk: Buffer) => {
 				stdout += chunk.toString();
@@ -244,38 +279,238 @@ async function runClaudeCliTask(
 
 		child.on("error", (error) => {
 			outputLogger.error("Failed to start Claude CLI", error);
+			outputLogger.error("Failed to run `claude mcp add`", error);
+			statusBar.text = `$(error) Failed to install '${name}' in claude code.`;
+			statusBar.tooltip = error instanceof Error ? error.message : undefined;
+			scheduleDispose();
 			reject(error);
 		});
 
 		child.on("close", async (code) => {
-			const messageParts: string[] = [];
-			messageParts.push(`Claude CLI exited with code ${code ?? "unknown"}.`);
-			if (stdout.trim()) {
-				messageParts.push(`\n${stdout.trim()}`);
-			}
-			if (stderr.trim()) {
-				messageParts.push(`\n${stderr.trim()}`);
-			}
+			const trimmedStdout = stdout.trim();
+			const trimmedStderr = stderr.trim();
 
 			if (code === 0) {
+				statusBar.text = `$(check) MCP Server '${name}' installed successfully.`;
+				statusBar.tooltip = "Codex CLI completed";
+				scheduleDispose();
+				const messageParts: string[] = [`Claude CLI install succeeded for '${name}'.`];
+				if (trimmedStdout) {
+					messageParts.push(trimmedStdout);
+				}
 				void vscode.window.showInformationMessage(messageParts.join("\n\n"));
 				resolve();
-			} else {
+				return;
+			}
+
+			const failureMessage = trimmedStderr || "Claude CLI reported an error. Check the Output panel for details.";
+			statusBar.text = `$(error) MCP install failed for '${name}'.`;
+			statusBar.tooltip = failureMessage;
+			scheduleDispose();
+			const selectedAction = await vscode.window.showErrorMessage(
+				`Claude CLI install failed for '${name}'. ${failureMessage}`,
+				"Copy Command",
+			);
+			if (selectedAction === "Copy Command") {
 				try {
-					const selectedAction = await vscode.window.showInformationMessage(messageParts.join("\n\n"), "Copy Command to Clipboard");
-					if (selectedAction === "Copy Command to Clipboard") {
-						await vscode.env.clipboard.writeText(clipboardCommand);
-						void vscode.window.showInformationMessage(
-							"Claude Code MCP install command copied to your clipboard for manual install.",
-						);
-					}
+					await vscode.env.clipboard.writeText(clipboardCommand);
+					void vscode.window.showInformationMessage("Claude CLI command copied to your clipboard.");
 				} catch (clipboardError) {
 					outputLogger.warn("Failed to copy Claude CLI command to clipboard", clipboardError);
 				}
-				const error = new Error(`Claude CLI exited with code ${code}`);
-				outputLogger.error("Claude CLI exited with non-zero code", error, { stdout, stderr });
-				reject(error);
 			}
+			const error = new Error(`Claude CLI exited with code ${code}`);
+			outputLogger.error("Claude CLI exited with non-zero code", error, { stdout, stderr });
+			reject(error);
+		});
+	});
+}
+
+type CodexCliCommand = {
+	args: string[];
+	spawnEnvOverrides?: Record<string, string>;
+	postInstallNotes?: string[];
+};
+
+function sanitizeEnvVarName(name: string): string {
+	const trimmed = name.trim();
+	const base = trimmed ? trimmed.replace(/[^A-Za-z0-9]+/g, "_") : "MCP_SERVER";
+	return base.replace(/^_+/, "");
+}
+
+function buildCodexCliCommand(
+	name: string,
+	transport: InstallTransport,
+	payload: InstallCommandPayload,
+): CodexCliCommand {
+	const args = ["mcp", "add", name];
+	const notes: string[] = [];
+	const spawnEnvOverrides: Record<string, string> = {};
+	const pushNote = (message: string) => {
+		if (message && !notes.includes(message)) {
+			notes.push(message);
+		}
+	};
+
+	if (transport === "stdio") {
+		const command = payload.command?.trim();
+		if (!command) {
+			throw new Error("Codex CLI stdio installs require a command to run.");
+		}
+
+		const envEntries = payload.env ? Object.entries(payload.env) : [];
+		for (const [key, value] of envEntries) {
+			const trimmedKey = key?.trim();
+			if (!trimmedKey) {
+				continue;
+			}
+			args.push("--env", `${trimmedKey}=${value ?? ""}`);
+		}
+
+		args.push("--", command);
+		if (payload.args && payload.args.length > 0) {
+			args.push(...payload.args);
+		}
+
+		return { args };
+	}
+
+	if (transport === "http") {
+		const url = payload.url?.trim();
+		if (!url) {
+			throw new Error("Codex CLI http installs require a URL.");
+		}
+		args.push("--url", url);
+
+		if (payload.headers && payload.headers.length > 0) {
+			const validHeaders = payload.headers.filter((header) => Boolean(header?.name?.trim()));
+			if (validHeaders.length > 1) {
+				throw new Error("Codex CLI only supports a single Authorization header for bearer tokens when adding HTTP servers.");
+			}
+			if (validHeaders.length === 1) {
+				const header = validHeaders[0];
+				const headerName = header?.name?.trim() ?? "";
+				if (!/^authorization$/i.test(headerName)) {
+					throw new Error("Codex CLI only supports Authorization headers with bearer tokens for HTTP servers.");
+				}
+				const rawValue = header?.value?.trim() ?? "";
+				const match = /^Bearer\s+(.+)$/i.exec(rawValue);
+				if (!match || !match[1]) {
+					throw new Error("Codex CLI requires Authorization headers to be in the format 'Bearer <TOKEN>'.");
+				}
+				const token = match[1].trim();
+				if (!token) {
+					throw new Error("Codex CLI requires a non-empty bearer token value.");
+				}
+				const envVarName = `CODEX_MCP_${sanitizeEnvVarName(name).toUpperCase()}_BEARER_TOKEN`;
+				args.push("--bearer-token-env-var", envVarName);
+				spawnEnvOverrides[envVarName] = token;
+				pushNote(`Set the ${envVarName} environment variable before launching Codex so it can authenticate to ${name}.`);
+			}
+		}
+
+		return {
+			args,
+			spawnEnvOverrides: Object.keys(spawnEnvOverrides).length > 0 ? spawnEnvOverrides : undefined,
+			postInstallNotes: notes.length > 0 ? notes : undefined,
+		};
+	}
+
+	throw new Error(`Codex CLI transport '${transport}' is not supported yet.`);
+}
+
+async function runCodexCliTask(
+	name: string,
+	transport: InstallTransport,
+	payload: InstallCommandPayload,
+): Promise<void> {
+	const codexBinary = "codex";
+	const command = buildCodexCliCommand(name, transport, payload);
+	const commandArgs = command.args;
+	const clipboardCommand = [codexBinary, ...commandArgs].map(shellQuote).join(" ");
+	outputLogger.info("Running Codex CLI", { name, transport, commandArgs });
+
+	const env = {
+		...createSpawnEnvWithAugmentedPath(),
+		...(command.spawnEnvOverrides ?? {}),
+	};
+	let stdout = "";
+	let stderr = "";
+
+	await new Promise<void>((resolve, reject) => {
+		const child = spawn(codexBinary, commandArgs, { env });
+		const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1);
+		statusBar.text = `$(sync~spin) Installing MCP Server '${name}'...`;
+		statusBar.tooltip = "Codex CLI is running";
+		statusBar.show();
+		const scheduleDispose = () => {
+			setTimeout(() => statusBar.dispose(), 5000);
+		};
+		if (child.stdout) {
+			child.stdout.on("data", (chunk: Buffer) => {
+				stdout += chunk.toString();
+			});
+		}
+
+		if (child.stderr) {
+			child.stderr.on("data", (chunk: Buffer) => {
+				stderr += chunk.toString();
+			});
+		}
+
+		child.on("error", (error) => {
+			outputLogger.error("Failed to start Codex CLI", error);
+			statusBar.text = `$(error) Failed to start '${name}' install.`;
+			statusBar.tooltip = error instanceof Error ? error.message : undefined;
+			scheduleDispose();
+			reject(error);
+		});
+
+		child.on("close", async (code) => {
+			const trimmedStdout = stdout.trim();
+			const trimmedStderr = stderr.trim();
+
+			if (code === 0) {
+				statusBar.text = `$(check) MCP Server '${name}' installed successfully.`;
+				statusBar.tooltip = "Codex CLI completed";
+				scheduleDispose();
+				const messageParts: string[] = [`Codex CLI install succeeded for '${name}'.`];
+				if (trimmedStdout) {
+					messageParts.push(`Output:\n${trimmedStdout}`);
+				}
+				if (command.postInstallNotes) {
+					messageParts.push(...command.postInstallNotes);
+				}
+				void vscode.window.showInformationMessage(messageParts.join("\n\n"));
+				resolve();
+				return;
+			}
+
+			const failureMessage = trimmedStderr || "Codex CLI reported an error. Check the Output panel for details.";
+			statusBar.text = `$(error) Failed to install '${name}'.`;
+			statusBar.tooltip = failureMessage;
+			scheduleDispose();
+			const actions: string[] = ["Copy Command"];
+			if (command.postInstallNotes && command.postInstallNotes.length > 0) {
+				actions.push("View Notes");
+			}
+			const selectedAction = await vscode.window.showErrorMessage(
+				`Codex CLI install failed for '${name}'. ${failureMessage}`,
+				...actions,
+			);
+			if (selectedAction === "Copy Command") {
+				try {
+					await vscode.env.clipboard.writeText(clipboardCommand);
+					void vscode.window.showInformationMessage("Codex CLI command copied to your clipboard.");
+				} catch (clipboardError) {
+					outputLogger.warn("Failed to copy Codex CLI command to clipboard", clipboardError);
+				}
+			} else if (selectedAction === "View Notes" && command.postInstallNotes) {
+				void vscode.window.showInformationMessage(command.postInstallNotes.join("\n\n"));
+			}
+			const error = new Error(`Codex CLI exited with code ${code}`);
+			outputLogger.error("Codex CLI exited with non-zero code", error, { stdout, stderr });
+			reject(error);
 		});
 	});
 }
@@ -420,6 +655,31 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
                                         error instanceof Error
                                                 ? error.message
                                                 : "Claude CLI failed to start. Check the terminal output.",
+                                );
+                        }
+                });
+
+                messenger.onRequest(installCodexFromConfigType, async (payload: CodexInstallRequest) => {
+                        logWebviewInstallAttempt(payload.name);
+                        const { values, canceled } = await collectInstallInputs(payload.inputs);
+                        if (canceled) {
+                                void vscode.window.showInformationMessage("Codex installation canceled.");
+                                return;
+                        }
+
+                        const substitutedPayload = applyInputsToPayload(payload, values);
+
+                        try {
+                                await runCodexCliTask(payload.name, payload.transport, substitutedPayload);
+                        } catch (error) {
+                                logError(error as Error, "codex-cli-install", {
+                                        transport: payload.transport,
+                                        mode: payload.mode,
+                                });
+                                void vscode.window.showErrorMessage(
+                                        error instanceof Error
+                                                ? error.message
+                                                : "Codex CLI failed to start. Check the terminal output.",
                                 );
                         }
                 });
