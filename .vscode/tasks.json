@@ -83,6 +83,19 @@
 				"npm: watch-tests"
 			],
 			"problemMatcher": []
+		},
+		{
+			"label": "stop watch tasks",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"pkill -f \"node esbuild.js --watch\" >/dev/null 2>&1 || true; pkill -f \"vite\" >/dev/null 2>&1 || true"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "never"
+			}
 		}
 	]
 }
