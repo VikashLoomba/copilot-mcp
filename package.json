@@ -12,7 +12,7 @@
   },
   "displayName": "Copilot MCP",
   "description": "Search, manage, and install open-source MCP servers",
-  "version": "0.0.88",
+  "version": "0.0.89",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.101.0"
@@ -48,9 +48,7 @@
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
-  "extensionDependencies": [
-    "github.copilot-chat"
-  ],
+  "extensionDependencies": [],
   "contributes": {
     "chatParticipants": [
       {
