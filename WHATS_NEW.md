@@ -2,7 +2,7 @@
 
 *Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
 
-## Version 0.0.89 - Skills Search + Multi-Agent Install Controls
+## Version 0.0.90 - Skills Search + Multi-Agent Install Controls
 *(February 11 2026)*
 
 This release adds first-class skills discovery and installation directly in the sidebar.
@@ -17,7 +17,6 @@ What's new
   - select specific detected agents
   - hidden, scrollable advanced options behind a gear button
 - Search is now the first/default top-level tab in the panel.
-- MCP search provider options now appear only when searching MCP servers.
 
 ## Version 0.0.88 - Codex CLI MCP Installer
 *(October 17 2025)*
