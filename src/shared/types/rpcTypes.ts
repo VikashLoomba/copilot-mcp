@@ -2,6 +2,7 @@ import {
         type RequestType,
         type NotificationType,
 } from "vscode-messenger-common";
+import type { AgentType } from "../../types";
 
 export type InstallInput = {
         type: "promptString";
@@ -102,3 +103,100 @@ export const registrySearchType: RequestType<
 	{ search: string; limit?: number; cursor?: string },
 	{ servers: any[]; metadata: { nextCursor?: string; count?: number } }
 > = { method: "registrySearch" };
+
+export interface SkillsSearchRequest {
+        query: string;
+        page?: number;
+        pageSize?: number;
+}
+
+export interface SkillsSearchItemDto {
+        id: string;
+        name: string;
+        installs: number;
+        source?: string;
+}
+
+export interface SkillsSearchResponse {
+        items: SkillsSearchItemDto[];
+        page: number;
+        pageSize: number;
+        hasMore: boolean;
+        fetchedCount: number;
+}
+
+export interface SkillsListFromSourceRequest {
+        source: string;
+}
+
+export interface ListedSkillDto {
+        name: string;
+        description: string;
+        path: string;
+}
+
+export interface SkillsListFromSourceResponse {
+        source: string;
+        skills: ListedSkillDto[];
+}
+
+export interface SkillAgentOptionDto {
+        id: AgentType;
+        displayName: string;
+        detected: boolean;
+        supportsGlobal: boolean;
+}
+
+export interface SkillsGetAgentsResponse {
+        agents: SkillAgentOptionDto[];
+        detectedAgents: AgentType[];
+}
+
+export type SkillsInstallScope = "project" | "global";
+
+export interface SkillsInstallRequest {
+        searchItem: SkillsSearchItemDto;
+        source: string;
+        selectedSkillNames: string[];
+        installScope: SkillsInstallScope;
+        installAllAgents: boolean;
+        selectedAgents: AgentType[];
+}
+
+export interface InstallRecordDto {
+        skillName: string;
+        agent: AgentType;
+        success: boolean;
+        path: string;
+        canonicalPath?: string;
+        mode: "symlink" | "copy";
+        symlinkFailed?: boolean;
+        error?: string;
+}
+
+export interface SkillsInstallResponse {
+        source: string;
+        selectedSkills: string[];
+        targetAgents: AgentType[];
+        installed: InstallRecordDto[];
+        failed: InstallRecordDto[];
+}
+
+export const skillsSearchType: RequestType<SkillsSearchRequest, SkillsSearchResponse> = {
+        method: "skillsSearch",
+};
+
+export const skillsListFromSourceType: RequestType<
+        SkillsListFromSourceRequest,
+        SkillsListFromSourceResponse
+> = {
+        method: "skillsListFromSource",
+};
+
+export const skillsGetAgentsType: RequestType<void, SkillsGetAgentsResponse> = {
+        method: "skillsGetAgents",
+};
+
+export const skillsInstallType: RequestType<SkillsInstallRequest, SkillsInstallResponse> = {
+        method: "skillsInstall",
+};

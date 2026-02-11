@@ -31,6 +31,10 @@ import {
         installClaudeFromConfigType,
         installCodexFromConfigType,
         registrySearchType,
+        skillsSearchType,
+        skillsListFromSourceType,
+        skillsGetAgentsType,
+        skillsInstallType,
 } from "../shared/types/rpcTypes";
 import type {
         InstallCommandPayload,
@@ -38,7 +42,11 @@ import type {
         InstallTransport,
         ClaudeInstallRequest,
         CodexInstallRequest,
+        SkillsInstallRequest,
 } from "../shared/types/rpcTypes";
+import { searchSkills, listSkillsFromSource, addSkillsFromSource } from "../skills-client";
+import { agents as availableSkillAgents, detectInstalledAgents } from "../agents";
+import type { AgentType } from "../types";
 import axios from "axios";
 import { outputLogger } from "../utilities/outputLogger";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
@@ -704,6 +712,141 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			} catch (error) {
 				console.error('Registry search failed', error);
 				return { servers: [], metadata: {} };
+			}
+		});
+
+		messenger.onRequest(skillsSearchType, async (payload) => {
+			const query = payload.query.trim();
+			const page = Math.max(1, Math.floor(payload.page ?? 1));
+			const pageSize = Math.max(1, Math.floor(payload.pageSize ?? 10));
+
+			if (!query) {
+				return {
+					items: [],
+					page,
+					pageSize,
+					hasMore: false,
+					fetchedCount: 0,
+				};
+			}
+
+			try {
+				const result = await searchSkills(query, { page, pageSize });
+				logWebviewSearch(query, result.fetchedCount);
+				return {
+					items: result.items,
+					page: result.page,
+					pageSize: result.pageSize,
+					hasMore: result.hasMore,
+					fetchedCount: result.fetchedCount,
+				};
+			} catch (error) {
+				logError(error as Error, "skills-search", { provider: "skills" });
+				throw error;
+			}
+		});
+
+		messenger.onRequest(skillsListFromSourceType, async (payload) => {
+			const source = payload.source.trim();
+			if (!source) {
+				throw new Error("Source is required");
+			}
+
+			try {
+				const skills = await listSkillsFromSource(source, {
+					fullDepth: true,
+					includeInternal: false,
+				});
+				return { source, skills };
+			} catch (error) {
+				logError(error as Error, "skills-list-from-source", { source });
+				throw error;
+			}
+		});
+
+		messenger.onRequest(skillsGetAgentsType, async () => {
+			const detectedAgents = await detectInstalledAgents();
+			const detectedSet = new Set(detectedAgents);
+
+			const skillAgents = (Object.keys(availableSkillAgents) as AgentType[])
+				.map((id) => ({
+					id,
+					displayName: availableSkillAgents[id].displayName,
+					detected: detectedSet.has(id),
+					supportsGlobal: availableSkillAgents[id].globalSkillsDir !== undefined,
+				}))
+				.sort((a, b) => {
+					if (a.detected !== b.detected) {
+						return a.detected ? -1 : 1;
+					}
+					return a.displayName.localeCompare(b.displayName);
+				});
+
+			return {
+				agents: skillAgents,
+				detectedAgents,
+			};
+		});
+
+		messenger.onRequest(skillsInstallType, async (payload: SkillsInstallRequest) => {
+			const source = payload.source.trim();
+			if (!source) {
+				throw new Error("Source is required");
+			}
+
+			const selectedSkillNames = payload.selectedSkillNames
+				.map((name) => name.trim())
+				.filter((name) => name.length > 0);
+			if (selectedSkillNames.length === 0) {
+				throw new Error("Select at least one skill to install");
+			}
+
+			const isGlobalInstall = payload.installScope === "global";
+			const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (!isGlobalInstall && !workspaceCwd) {
+				throw new Error(
+					"Project installs require an open workspace folder. Open a folder or switch to Global scope."
+				);
+			}
+			const knownAgentIds = new Set(Object.keys(availableSkillAgents));
+			const detectedAgents = await detectInstalledAgents();
+			const detectedAgentSet = new Set(detectedAgents);
+
+			let targetAgents: AgentType[];
+			if (payload.installAllAgents) {
+				targetAgents = isGlobalInstall
+					? detectedAgents.filter((agent) => availableSkillAgents[agent].globalSkillsDir !== undefined)
+					: detectedAgents;
+			} else {
+				const requestedAgents = payload.selectedAgents.filter((agent): agent is AgentType =>
+					knownAgentIds.has(agent) && detectedAgentSet.has(agent)
+				);
+				targetAgents = isGlobalInstall
+					? requestedAgents.filter((agent) => availableSkillAgents[agent].globalSkillsDir !== undefined)
+					: requestedAgents;
+			}
+
+			if (Array.isArray(targetAgents) && targetAgents.length === 0) {
+				throw new Error("No compatible agents selected for this install scope");
+			}
+
+			try {
+				logWebviewInstallAttempt(payload.searchItem.name);
+				return await addSkillsFromSource(source, {
+					skillNames: selectedSkillNames,
+					agents: targetAgents,
+					global: isGlobalInstall,
+					cwd: isGlobalInstall ? undefined : workspaceCwd,
+					fullDepth: true,
+					includeInternal: false,
+				});
+			} catch (error) {
+				logError(error as Error, "skills-install", {
+					source,
+					installScope: payload.installScope,
+					allAgents: payload.installAllAgents,
+				});
+				throw error;
 			}
 		});
 
