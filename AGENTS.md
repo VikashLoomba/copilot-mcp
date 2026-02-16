@@ -2,6 +2,11 @@
 
 Guidance for coding agents working in this repository. This file focuses on structure and code maps so feature work can be done quickly and safely.
 
+## Engineering Standard
+- All changes (workflows, code, tests, docs, and release automation) must follow durable best practices.
+- Do not ship temporary hacks, stopgap fixes, or "good for now" implementations.
+- Prefer maintainable architecture, deterministic behavior, and clear validation over quick patches.
+
 ## Project Shape
 - VS Code extension backend: `src/`
 - React webview frontend: `web/src/`
