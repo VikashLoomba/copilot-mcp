@@ -52,6 +52,7 @@ import { outputLogger } from "../utilities/outputLogger";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
 import { spawn, execSync, exec, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
 	folder: vscode.WorkspaceFolder
@@ -526,6 +527,8 @@ async function runCodexCliTask(
 
 export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "copilotMcpView";
+	public static readonly launcherViewType = "copilotMcpLauncherView";
+	private static readonly secondarySidebarContainerId = "copilotMcpSidebar";
 	octokit: any;
 
 	constructor(
@@ -537,8 +540,76 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken
 	) {
+		if (webviewView.viewType === CopilotMcpViewProvider.launcherViewType) {
+			this.configureLauncherView(webviewView);
+			return;
+		}
+
+		this.configureWebviewView(webviewView);
+	}
+
+	private configureLauncherView(webviewView: vscode.WebviewView) {
+		webviewView.webview.options = {
+			enableScripts: false,
+			localResourceRoots: [this._extensionUri],
+		};
+		webviewView.webview.html = this._getLauncherHtml(webviewView.webview);
+
+		const scheduleRedirect = () => {
+			// Switching containers during view resolve can be ignored by VS Code.
+			// Retry a few times to reliably jump to the secondary container.
+			const delays = [0, 150, 600];
+			for (const delay of delays) {
+				setTimeout(() => {
+					void this.revealSecondarySidebar();
+				}, delay);
+			}
+		};
+
+		scheduleRedirect();
+		webviewView.onDidChangeVisibility(() => {
+			if (webviewView.visible) {
+				scheduleRedirect();
+			}
+		});
+	}
+
+	private async revealSecondarySidebar() {
+		const containerCommand = `workbench.view.extension.${CopilotMcpViewProvider.secondarySidebarContainerId}`;
+		const lowercaseContainerCommand = `workbench.view.extension.${CopilotMcpViewProvider.secondarySidebarContainerId.toLowerCase()}`;
+		try {
+			await vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
+		} catch (error) {
+			outputLogger.warn("Failed to focus Secondary Side Bar before opening container", error as Error);
+		}
+		try {
+			await vscode.commands.executeCommand(containerCommand);
+		} catch (error) {
+			outputLogger.warn("Failed to reveal Copilot MCP Secondary Side Bar via primary command", error as Error);
+			try {
+				await vscode.commands.executeCommand(lowercaseContainerCommand);
+			} catch (fallbackError) {
+				outputLogger.warn("Failed to reveal Copilot MCP Secondary Side Bar via fallback command", fallbackError as Error);
+			}
+		}
+		try {
+			await vscode.commands.executeCommand("workbench.view.explorer");
+		} catch (error) {
+			outputLogger.warn("Failed to switch primary sidebar away from launcher", error as Error);
+		}
+		try {
+			await vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
+		} catch (error) {
+			outputLogger.warn("Failed to focus Secondary Side Bar", error as Error);
+		}
+	}
+
+	private configureWebviewView(
+		webviewView: vscode.WebviewView
+	) {
 		const messenger = new Messenger();
 		messenger.registerWebviewView(webviewView);
+		const webviewType = webviewView.viewType;
 
 		messenger.onRequest(searchServersType, async (payload) => {
 			const searchResponse = await searchMcpServers2({
@@ -564,7 +635,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 		messenger.onRequest(getMcpConfigType, async () => {
 			// Ensure "mcp-server-time" is handled correctly if it's a global temporary server
-			await deleteServer(webviewView, "mcp-server-time", true); // Pass a flag to suppress info for this specific server
+			await deleteServer("mcp-server-time", true); // Pass a flag to suppress info for this specific server
 			const servers = await getAllServers();
 			return { servers };
 		});
@@ -589,7 +660,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				
 				setupResult = await this.vscodeLMResponse(
 					readmeToParse,
-					webviewView,
 					payload.repo?.url
 				);
 				
@@ -883,7 +953,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 		messenger.onNotification(deleteServerType, async (payload) => {
 			try {
-				await deleteServer(webviewView, payload.serverName);
+				await deleteServer(payload.serverName);
 				
 				// Log successful server deletion
 				logEvent({
@@ -898,7 +968,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				const currentServers = await getAllServers();
 				messenger.sendNotification(
 					updateMcpConfigType,
-					{ type: "webview", webviewType: webviewView.viewType },
+					{ type: "webview", webviewType },
 					{
 						servers: currentServers,
 					}
@@ -973,7 +1043,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				const currentServers = await getAllServers();
 				messenger.sendNotification(
 					updateMcpConfigType,
-					{ type: "webview", webviewType: webviewView.viewType },
+					{ type: "webview", webviewType },
 					{
 						servers: currentServers,
 					}
@@ -1060,9 +1130,34 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	  `;
 	}
 
+	private _getLauncherHtml(webview: vscode.Webview): string {
+		return /*html*/ `
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource};">
+            <style>
+              body {
+                margin: 0;
+                padding: 12px;
+                color: var(--vscode-foreground);
+                background: var(--vscode-sideBar-background);
+                font-family: var(--vscode-font-family);
+                font-size: 12px;
+              }
+            </style>
+          </head>
+          <body>
+            Opening Copilot MCP in Secondary Side Bar...
+          </body>
+        </html>
+      `;
+	}
+
 	public async vscodeLMResponse(
 		readme: string,
-		webviewView?: vscode.WebviewView,
 		repoURL?: string
 	) {
 		return await vscode.window.withProgress(
@@ -1122,7 +1217,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 // This function is deprecated by direct use of getAllServers in the getMcpConfigType handler
 // and onDidChangeConfiguration. The webview will be updated with the full merged list.
 // async function sendServers(webviewView: vscode.WebviewView) {
-//   await deleteServer(webviewView, "mcp-server-time", true); // Suppress info for this specific server
+//   await deleteServer("mcp-server-time", true); // Suppress info for this specific server
 //   const allServers = await getAllServers();
 //   webviewView.webview.postMessage({
 //     type: "receivedMCPConfigObject",
@@ -1137,7 +1232,6 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 // }
 
 async function deleteServer(
-	webviewView: vscode.WebviewView, // webviewView might not be needed if not posting message from here
 	serverKeyToDelete: string,
 	suppressUserNotification: boolean = false
 ) {

@@ -98,10 +98,29 @@ export async function activate(context: vscode.ExtensionContext) {
 		version: extensionVersion,
 		isNewInstall: vscode.env.isNewAppInstall 
 	});
+
+	outputLogger.debug("Creating CopilotMcpViewProvider");
+	const provider = new CopilotMcpViewProvider(
+		context.extensionUri
+	);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			CopilotMcpViewProvider.viewType,
+			provider
+		)
+	);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			CopilotMcpViewProvider.launcherViewType,
+			provider
+		)
+	);
+	outputLogger.info("Webview provider registered");
+
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand(
+	const helloWorldCommand = vscode.commands.registerCommand(
 		"copilot-mcp.helloWorld",
 		() => {
 			// The code you place here will be executed every time your command is executed
@@ -119,19 +138,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	context.subscriptions.push(disposable, showLogsCommand);
-
-	outputLogger.debug("Creating CopilotMcpViewProvider");
-    const provider = new CopilotMcpViewProvider(
-        context.extensionUri
-    );
-	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(
-			CopilotMcpViewProvider.viewType,
-			provider
-		)
-	);
-	outputLogger.info("Webview provider registered");
+	context.subscriptions.push(helloWorldCommand, showLogsCommand);
 
 	// Register the chat participant and its request handler
 	outputLogger.debug("Registering MCP chat participant");
