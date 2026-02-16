@@ -4,8 +4,7 @@ on:
   push:
     paths:
       - 'package.json'
-      - 'src/*'
-      - '.github/*'
+      - 'package-lock.json'
     branches:
       - main
   workflow_dispatch:
@@ -17,10 +16,11 @@ on:
 
 jobs:
   update-version:
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore:') }}
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: update version to') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     
     steps:
     - uses: actions/checkout@v4
@@ -56,14 +56,31 @@ jobs:
         git diff --staged --quiet || git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
         git push
 
-    - name: Delete existing tag if present
+    - name: Check whether tag exists
+      id: check_tag
       run: |
-        if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
-          git tag -d "v${{ steps.get_version.outputs.version }}"
-          git push --delete origin "v${{ steps.get_version.outputs.version }}" || true
+        if git ls-remote --tags origin "refs/tags/v${{ steps.get_version.outputs.version }}" | grep -q .; then
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "Tag v${{ steps.get_version.outputs.version }} already exists on origin. Skipping tag creation."
+        else
+          echo "exists=false" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Create and push tag
+      if: steps.check_tag.outputs.exists == 'false'
       run: |
         git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release version ${{ steps.get_version.outputs.version }}"
-        git push origin "v${{ steps.get_version.outputs.version }}" 
+        git push origin "v${{ steps.get_version.outputs.version }}"
+
+    - name: Trigger release workflow
+      if: steps.check_tag.outputs.exists == 'false'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        curl -sSfL \
+          -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $GH_TOKEN" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches" \
+          -d '{"ref":"${{ github.ref_name }}","inputs":{"version":"${{ steps.get_version.outputs.version }}"}}'

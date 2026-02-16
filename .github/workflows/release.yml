@@ -2,62 +2,83 @@ name: Build and Release Extension
 
 on:
   push:
-    tags: [ 'v*.*.*' ]
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (without v prefix, e.g. 1.0.0)'
+        description: "Version to release (without v prefix, e.g. 1.0.0)"
         required: true
         type: string
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
-    
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
-    
+
+    - name: Fetch tags
+      run: git fetch --tags --force
+
+    - name: Resolve release version and tag
+      id: resolve
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          tag="v${{ inputs.version }}"
+        else
+          tag="${GITHUB_REF#refs/tags/}"
+        fi
+
+        if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Invalid tag format: $tag"
+          exit 1
+        fi
+
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+    - name: Validate tag exists for manual dispatch
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        for attempt in 1 2 3 4 5 6; do
+          git fetch --tags --force
+          if git rev-parse "refs/tags/${{ steps.resolve.outputs.tag }}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          echo "Tag ${{ steps.resolve.outputs.tag }} not available yet (attempt $attempt/6). Retrying..."
+          sleep 5
+        done
+
+        echo "Tag ${{ steps.resolve.outputs.tag }} does not exist in the repository."
+        echo "Create and push the tag first, then rerun this workflow."
+        exit 1
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ needs.prepare.outputs.tag }}
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
-        cache: 'npm'
-        
-    - name: Get version
-      id: get_version
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-        else
-          echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Configure Git
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        git config --global user.name 'GitHub Actions'
-        git config --global user.email 'actions@github.com'
-
-    - name: Delete existing tag if manually triggered
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
-          git tag -d "v${{ inputs.version }}"
-          git push --delete origin "v${{ inputs.version }}" || true
-        fi
-
-    - name: Create tag if manually triggered
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        git tag -a "v${{ inputs.version }}" -m "Release version ${{ inputs.version }}"
-        git push origin "v${{ inputs.version }}"
+        node-version: "20"
+        cache: "npm"
 
     - name: Install dependencies
       run: npm ci
@@ -85,19 +106,20 @@ jobs:
         retention-days: 7
 
   package:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
+        ref: ${{ needs.prepare.outputs.tag }}
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
-        cache: 'npm'
+        node-version: "20"
+        cache: "npm"
 
     - name: Download build artifacts
       uses: actions/download-artifact@v4
@@ -122,15 +144,13 @@ jobs:
           echo "VSIX file was not created"
           exit 1
         fi
-        
-        # Check file size (should be reasonable, not 0 bytes)
+
         file_size=$(stat -c%s "copilot-mcp-${{ needs.build.outputs.version }}.vsix")
         if [ "$file_size" -lt 1000000 ]; then
           echo "VSIX file seems too small: $file_size bytes"
           exit 1
         fi
-        
-        # Generate checksum for integrity verification
+
         sha256sum "copilot-mcp-${{ needs.build.outputs.version }}.vsix" > vsix.sha256
         echo "VSIX file verified successfully (size: $file_size bytes)"
         echo "SHA256: $(cat vsix.sha256)"
@@ -145,22 +165,23 @@ jobs:
         retention-days: 7
 
   release:
-    needs: [build, package]
+    needs: [prepare, build, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
     - name: Download VSIX artifact
       uses: actions/download-artifact@v4
       with:
         name: vsix-package
-        
-    - name: Create Release
+
+    - name: Create GitHub release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ needs.build.outputs.version }}
-        name: Release v${{ needs.build.outputs.version }}
+        tag_name: ${{ needs.prepare.outputs.tag }}
+        name: Release ${{ needs.prepare.outputs.tag }}
+        generate_release_notes: true
         files: |
           copilot-mcp-${{ needs.build.outputs.version }}.vsix
           vsix.sha256
@@ -168,18 +189,22 @@ jobs:
         prerelease: false
 
   publish:
-    needs: [build, package]
+    needs: [prepare, build, package, release]
     runs-on: ubuntu-latest
-    
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
+
     steps:
+    - name: Skip Marketplace publish when token is missing
+      if: env.VSCE_PAT == ''
+      run: echo "VSCE_TOKEN is not configured. Skipping VS Code Marketplace publish."
+
     - name: Download VSIX artifact
+      if: env.VSCE_PAT != ''
       uses: actions/download-artifact@v4
       with:
         name: vsix-package
 
     - name: Publish to Marketplace
+      if: env.VSCE_PAT != ''
       run: npx @vscode/vsce@2.32.0 publish --packagePath copilot-mcp-${{ needs.build.outputs.version }}.vsix
-      env:
-        VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
-      
- 
