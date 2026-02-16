@@ -4,3 +4,7 @@ node_modules
 .vscode-test/
 *.vsix
 .env
+
+# Accidental TS emit artifacts (source-adjacent JS/maps)
+src/**/*.js
+src/**/*.js.map

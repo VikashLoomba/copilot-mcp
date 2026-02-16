@@ -7,7 +7,7 @@ Guidance for coding agents working in this repository. This file focuses on stru
 - React webview frontend: `web/src/`
 - Extension/webview RPC contracts: `src/shared/types/rpcTypes.ts`
 - Chat participant (`@mcp`): `src/McpAgent.ts`
-- Sidebar webview provider + RPC handlers: `src/panels/ExtensionPanel.ts`
+- Secondary Side Bar webview + Activity Bar launcher provider/RPC handlers: `src/panels/ExtensionPanel.ts`
 
 ## Build + Run
 - Install deps (root + web): `npm run install:all`
@@ -15,16 +15,38 @@ Guidance for coding agents working in this repository. This file focuses on stru
 - Watch mode (extension + web): `npm run watch`
 - Lint: `npm run lint`
 - Tests: `npm run test`
+- Webview unit tests (Vitest): `npm run test:webview`
+- Extension UI smoke/E2E harness: `npm run test:ui`
+- Combined UI test pass: `npm run test:all-ui`
 - Package VSIX: `npm run package-extension`
 
 Important: the extension webview loads static assets from `web/dist/assets/index.js` and `web/dist/assets/index.css` (see `src/panels/ExtensionPanel.ts`). If you change frontend code, rebuild web assets.
+Important (dev Play flow): `.vscode/tasks.json` default `watch` includes `watch:esbuild`, `watch:tsc`, and `watch:webview`. `watch:webview` runs `npm --prefix web run build -- --watch` so `web/dist/assets/*` is regenerated during development.
+
+## UI Testing Requirements
+- If you change or add webview UI (`web/src/**`), add or update tests under `web/src/**/*.test.tsx`.
+- If you change extension-side UI wiring or view contributions (`src/extension.ts`, `src/panels/**`, related contribution metadata), add or update tests under `src/test/ui/**`.
+- Minimum verification for UI-related changes:
+  1. `npm run test:webview`
+  2. `npm run test:ui`
+- Prefer focused smoke tests that verify behavior/contracts over brittle snapshots.
+- For regressions, add a test that fails before the fix and passes after it.
+- UI copy must describe user value and actions, not internal implementation state.
+  - Avoid phrasing like "because X input is empty" or other system-internal explanations.
+  - Prefer direct labels/instructions such as "Installed Skills", "Manage...", and "Search above to install...".
 
 ## Entry Points
 - Extension activation + registrations: `src/extension.ts`
-  - Registers webview: `CopilotMcpViewProvider`
+  - Registers webviews: `copilotMcpView` (real UI) and `copilotMcpLauncherView` (launcher)
   - Registers chat participant id: `copilot.mcp-agent`
   - Configures logging + telemetry
 - Webview frontend bootstrap: `web/src/main.tsx` -> `web/src/App.tsx` -> `web/src/components/MCPServers.tsx`
+
+## View Placement (Current Contract)
+- Real extension UI container: `viewsContainers.secondarySidebar` id `copilotMcpSidebar` in `package.json`.
+- Activity Bar icon is a launcher container: `viewsContainers.activitybar` id `copilotMcpLauncher`.
+- Launcher view id/type: `copilotMcpLauncherView`; real view id/type: `copilotMcpView`.
+- Launcher behavior lives in `src/panels/ExtensionPanel.ts` and should immediately redirect/focus to the secondary container.
 
 ## Directory Map
 - `src/extension.ts`: extension activation lifecycle.
@@ -128,13 +150,19 @@ When adding or changing extension/webview behavior:
 4. Ensure payload shapes line up with frontend typed models (often `web/src/types/*`).
 
 ## Known Gotchas
+- Secondary Side Bar contribution requires VS Code `^1.104.0` or newer (`engines.vscode` in `package.json`).
+- Do not reuse the same container id for both `activitybar` and `secondarySidebar`; VS Code merges by id and breaks launcher semantics.
+- Avoid using `workbench.action.openView` in launcher redirects; it can briefly flash quick-open style UI.
+- If the webview is blank in dev, verify `web/dist/assets/index.js` and `web/dist/assets/index.css` exist; run `npm run install:all` and restart Play if needed.
 - `src/utilities/cloudMcpIndexer.ts` is currently a minimal stub. Do not assume CloudMCP indexing/cache exists without implementing it.
 - `checkCloudMcpType` exists in RPC types, but there is no active handler path in `src/panels/ExtensionPanel.ts`.
 - There are two skills-client entry files:
   - extension-internal: `src/skills-client.ts`
   - root-level export-oriented variant: `skills-client.ts`
   Keep behavior aligned if shared APIs change.
-- `src/test/extension.test.ts` is still a basic sample test; most feature changes currently rely on manual validation.
+- UI harness entry points:
+  - webview tests: `web/vitest.config.ts`, `web/src/test/setup.ts`
+  - extension UI harness: `src/test/ui/runTest.ts`, `src/test/ui/suite/**`
 
 ## Quick “Where Do I Edit?” Map
 - Add a new sidebar tab/section: `web/src/components/MCPServers.tsx` + new component in `web/src/components/*`.
