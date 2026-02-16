@@ -1,0 +1,41 @@
+name: Run Tests on Main Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Run webview tests
+        run: npm run test:webview
+
+      - name: Ensure xvfb is available
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run extension UI tests
+        run: xvfb-run -a npm run test:ui
