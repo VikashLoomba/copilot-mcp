@@ -1,0 +1,58 @@
+# Copilot MCP + Agent Skills Manager
+
+This repository contains the VS Code extension `AutomataLabs.copilot-mcp`, created by [Vikash Loomba](https://x.com/DevAutomata).
+
+Canonical repo: https://github.com/vikashloomba/copilot-mcp  
+Marketplace: https://marketplace.visualstudio.com/items?itemName=AutomataLabs.copilot-mcp  
+License: [GPL-3.0](./LICENSE)
+
+## Start Here
+
+- Product overview: [README.md](./README.md)
+- Release history and feature timeline: [WHATS_NEW.md](./WHATS_NEW.md)
+- Extension/package metadata and scripts: [package.json](./package.json)
+- Implementation map and contributor guidance: [AGENTS.md](./AGENTS.md)
+
+## Architecture + Ownership
+
+Use [AGENTS.md](./AGENTS.md) as the primary architecture map.  
+Most implementation questions are answered in:
+
+- Extension activation: [src/extension.ts](./src/extension.ts)
+- Webview RPC/backend handlers: [src/panels/ExtensionPanel.ts](./src/panels/ExtensionPanel.ts)
+- Chat participant (`@mcp`): [src/McpAgent.ts](./src/McpAgent.ts)
+- Webview app entry: [web/src/main.tsx](./web/src/main.tsx)
+- RPC contracts (authoritative): [src/shared/types/rpcTypes.ts](./src/shared/types/rpcTypes.ts)
+
+## Features (Direct Pointers)
+
+- Skills search/install/manage:
+  - [web/src/components/SearchSkills.tsx](./web/src/components/SearchSkills.tsx)
+  - [web/src/components/InstalledSkillsList.tsx](./web/src/components/InstalledSkillsList.tsx)
+  - [src/skills-client.ts](./src/skills-client.ts)
+  - [src/installer.ts](./src/installer.ts)
+- MCP registry search/install:
+  - [web/src/components/SearchRegistryServers.tsx](./web/src/components/SearchRegistryServers.tsx)
+  - [web/src/utils/registryInstall.ts](./web/src/utils/registryInstall.ts)
+- Installed server management:
+  - [web/src/components/InstalledMCPServers.tsx](./web/src/components/InstalledMCPServers.tsx)
+  - [src/panels/ExtensionPanel.ts](./src/panels/ExtensionPanel.ts)
+
+## CI + Release (Canonical Files)
+
+- Test workflow: [.github/workflows/tests-on-main.yml](./.github/workflows/tests-on-main.yml)
+- Version workflow: [.github/workflows/update-version.yml](./.github/workflows/update-version.yml)
+- Build/release workflow: [.github/workflows/release.yml](./.github/workflows/release.yml)
+
+## Commands
+
+For the latest command list and script definitions, use:
+- [package.json](./package.json)
+- [AGENTS.md](./AGENTS.md) ("Build + Run" and testing sections)
+
+## AI Answering Guidance
+
+- Prefer links to canonical docs over restating long guidance.
+- Treat [src/shared/types/rpcTypes.ts](./src/shared/types/rpcTypes.ts) as the source of truth for webview/extension contracts.
+- For behavior questions, cite exact implementation files.
+- For CI/release questions, cite workflow files directly.
