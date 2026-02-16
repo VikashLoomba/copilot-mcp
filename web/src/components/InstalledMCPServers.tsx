@@ -22,7 +22,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Messenger } from "vscode-messenger-webview";
-import { deleteServerType, getMcpConfigType, sendFeedbackType, updateMcpConfigType, updateServerEnvVarType } from "../../../src/shared/types/rpcTypes";
+import { deleteServerType, getMcpConfigType, sendFeedbackType, updateMcpConfigType, updateServerEnvVarType } from "../../../src/shared/types/rpcTypes.ts";
 
 // Define the structure of a server object based on the example provided
 interface McpServer {

@@ -3,7 +3,7 @@ import type {
   InstallInput,
   InstallMode,
   InstallTransport,
-} from "../../../src/shared/types/rpcTypes";
+} from "../../../src/shared/types/rpcTypes.ts";
 import type {
   RegistryArgument,
   RegistryPackage,

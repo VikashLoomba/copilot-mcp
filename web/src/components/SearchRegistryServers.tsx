@@ -5,7 +5,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import RegistryServerCard from './RegistryServerCard';
 import { useVscodeApi } from '@/contexts/VscodeApiContext';
 import { Messenger } from 'vscode-messenger-webview';
-import { registrySearchType } from '../../../src/shared/types/rpcTypes';
+import { registrySearchType } from '../../../src/shared/types/rpcTypes.ts';
 import {
   normalizeRegistryMetadata,
   normalizeRegistryServerResponse,

@@ -17,7 +17,7 @@ import {
   installCodexFromConfigType,
   installFromConfigType,
   type InstallMode,
-} from "../../../src/shared/types/rpcTypes";
+} from "../../../src/shared/types/rpcTypes.ts";
 import type {
   RegistryPackage,
   RegistryServer,

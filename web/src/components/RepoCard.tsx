@@ -12,7 +12,7 @@ import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
-import { aiAssistedSetupType, cloudMCPInterestType, previewReadmeType } from "../../../src/shared/types/rpcTypes";
+import { aiAssistedSetupType, cloudMCPInterestType, previewReadmeType } from "../../../src/shared/types/rpcTypes.ts";
 interface CloudMcpCheckResult {
   success: boolean;
   exists: boolean;

@@ -5,7 +5,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useVscodeApi } from '@/contexts/VscodeApiContext';
 import { Messenger } from 'vscode-messenger-webview';
 import RepoCard from './RepoCard';
-import { searchServersType } from '../../../src/shared/types/rpcTypes';
+import { searchServersType } from '../../../src/shared/types/rpcTypes.ts';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 

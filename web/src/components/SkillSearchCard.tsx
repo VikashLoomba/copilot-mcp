@@ -13,7 +13,7 @@ import {
   type SkillsInstallResponse,
   type SkillsInstallScope,
   type SkillsSearchItemDto,
-} from '../../../src/shared/types/rpcTypes';
+} from '../../../src/shared/types/rpcTypes.ts';
 
 type AgentId = SkillAgentOptionDto['id'];
 
