@@ -17,7 +17,6 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
-      target_sha: ${{ steps.target.outputs.sha }}
 
     steps:
     - uses: actions/checkout@v4
@@ -60,45 +59,42 @@ jobs:
         echo "Create and push the tag first, then rerun this workflow."
         exit 1
 
-    - name: Resolve tag target commit
-      id: target
-      run: |
-        sha="$(git rev-list -n 1 "${{ steps.resolve.outputs.tag }}")"
-        if [ -z "$sha" ]; then
-          echo "Unable to resolve commit SHA for tag ${{ steps.resolve.outputs.tag }}"
-          exit 1
-        fi
-        echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-  verify-tests:
+  test:
     needs: prepare
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
 
     steps:
-    - name: Ensure tests passed for release commit
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
-      run: |
-        api_path="repos/${GITHUB_REPOSITORY}/actions/workflows/tests-on-main.yml/runs?head_sha=${TARGET_SHA}&event=push&branch=main&status=completed&per_page=1"
-        conclusion="$(gh api "$api_path" --jq '.workflow_runs[0].conclusion // ""')"
-        url="$(gh api "$api_path" --jq '.workflow_runs[0].html_url // ""')"
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ needs.prepare.outputs.tag }}
 
-        if [ "$conclusion" != "success" ]; then
-          echo "No successful tests run found for commit ${TARGET_SHA}."
-          echo "Expected workflow: Run Tests on Main Push"
-          if [ -n "$url" ]; then
-            echo "Latest matching run: $url (conclusion: $conclusion)"
-          fi
-          exit 1
-        fi
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+        cache: "npm"
+        cache-dependency-path: |
+          package-lock.json
+          web/package-lock.json
 
-        echo "Tests passed for release commit ${TARGET_SHA}: $url"
+    - name: Install root dependencies
+      run: npm ci
+
+    - name: Install web dependencies
+      run: npm ci --prefix web
+
+    - name: Run webview tests
+      run: npm run test:webview
+
+    - name: Ensure xvfb is available
+      run: sudo apt-get update && sudo apt-get install -y xvfb
+
+    - name: Run extension UI tests
+      run: xvfb-run -a npm run test:ui
 
   build:
-    needs: [prepare, verify-tests]
+    needs: [prepare, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read

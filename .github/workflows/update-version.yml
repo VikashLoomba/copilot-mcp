@@ -15,55 +15,40 @@ on:
         type: string
 
 jobs:
-  wait-for-tests:
+  test:
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: update version to') }}"
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
 
     steps:
-    - name: Skip tests gate for manual dispatch
-      if: github.event_name == 'workflow_dispatch'
-      run: echo "Manual dispatch requested. Skipping tests gate."
+    - name: Checkout
+      uses: actions/checkout@v4
 
-    - name: Wait for tests workflow to complete for this commit
-      if: github.event_name == 'push'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        api_path="repos/${GITHUB_REPOSITORY}/actions/workflows/tests-on-main.yml/runs?head_sha=${GITHUB_SHA}&event=push&branch=main&per_page=1"
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: "npm"
+        cache-dependency-path: |
+          package-lock.json
+          web/package-lock.json
 
-        for attempt in $(seq 1 40); do
-          status="$(gh api "$api_path" --jq '.workflow_runs[0].status // ""')"
-          conclusion="$(gh api "$api_path" --jq '.workflow_runs[0].conclusion // ""')"
-          url="$(gh api "$api_path" --jq '.workflow_runs[0].html_url // ""')"
+    - name: Install root dependencies
+      run: npm ci
 
-          if [ -z "$status" ]; then
-            echo "Attempt $attempt/40: tests workflow run not found yet for ${GITHUB_SHA}. Waiting..."
-            sleep 15
-            continue
-          fi
+    - name: Install web dependencies
+      run: npm ci --prefix web
 
-          if [ "$status" != "completed" ]; then
-            echo "Attempt $attempt/40: tests workflow is still '$status'. Waiting..."
-            sleep 15
-            continue
-          fi
+    - name: Run webview tests
+      run: npm run test:webview
 
-          if [ "$conclusion" = "success" ]; then
-            echo "Tests passed for ${GITHUB_SHA}: $url"
-            exit 0
-          fi
+    - name: Ensure xvfb is available
+      run: sudo apt-get update && sudo apt-get install -y xvfb
 
-          echo "Tests did not pass for ${GITHUB_SHA} (conclusion: $conclusion)."
-          echo "Failing update-version workflow."
-          exit 1
-        done
-
-        echo "Timed out waiting for tests workflow completion for ${GITHUB_SHA}."
-        exit 1
+    - name: Run extension UI tests
+      run: xvfb-run -a npm run test:ui
 
   update-version:
-    needs: wait-for-tests
+    needs: test
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: update version to') }}"
     runs-on: ubuntu-latest
     permissions:
