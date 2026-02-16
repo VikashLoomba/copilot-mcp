@@ -2,6 +2,20 @@
 
 *Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
 
+## Version 0.0.91 - Installed Skills Management + CI Test Automation
+*(February 16 2026)*
+
+This release rounds out the new skills workflow with installed-skill management.
+
+What's new
+
+- Added an **Installed Skills** view in the Skills tab when search is empty.
+- Added uninstall support for installed skills with:
+  - confirmation dialog
+  - agent selection (preselected to all installed agents)
+  - shared-path safety guardrails that require uninstalling from all listed agents when needed
+- Improved installed skill card layout so location details and uninstall actions are easier to scan.
+
 ## Version 0.0.90 - Skills Search + Multi-Agent Install Controls
 *(February 11 2026)*
 

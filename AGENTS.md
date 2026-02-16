@@ -19,6 +19,7 @@ Guidance for coding agents working in this repository. This file focuses on stru
 - Extension UI smoke/E2E harness: `npm run test:ui`
 - Combined UI test pass: `npm run test:all-ui`
 - Package VSIX: `npm run package-extension`
+- CI test workflow: `.github/workflows/tests-on-main.yml` (runs on push/PR to `main`)
 
 Important: the extension webview loads static assets from `web/dist/assets/index.js` and `web/dist/assets/index.css` (see `src/panels/ExtensionPanel.ts`). If you change frontend code, rebuild web assets.
 Important (dev Play flow): `.vscode/tasks.json` default `watch` includes `watch:esbuild`, `watch:tsc`, and `watch:webview`. `watch:webview` runs `npm --prefix web run build -- --watch` so `web/dist/assets/*` is regenerated during development.
@@ -112,19 +113,23 @@ Important (dev Play flow): `.vscode/tasks.json` default `watch` includes `watch:
   - merged server reads from settings + `.vscode/mcp.json` in `src/panels/ExtensionPanel.ts` (`getAllServers`)
   - deletion/update logic in `src/panels/ExtensionPanel.ts`
 
-### 5) Skills search/list/install
+### 5) Skills search/list/install/manage
 - UI:
   - `web/src/components/SearchSkills.tsx`
   - `web/src/components/SkillSearchCard.tsx`
+  - `web/src/components/InstalledSkillsList.tsx`
 - RPC:
   - `skillsSearchType`
   - `skillsListFromSourceType`
   - `skillsGetAgentsType`
   - `skillsInstallType`
+  - `skillsListInstalledType`
+  - `skillsUninstallType`
 - Backend:
   - orchestrator: `src/skills-client.ts`
   - skill discovery + parsing: `src/skills.ts`
   - install engine: `src/installer.ts`
+  - installed-skill list/uninstall handlers: `src/panels/ExtensionPanel.ts`
   - agent capabilities/detection: `src/agents.ts`
   - source parsing + git clone: `src/source-parser.ts`, `src/git.ts`
   - plugin manifest skill discovery: `src/plugin-manifest.ts`
@@ -163,11 +168,14 @@ When adding or changing extension/webview behavior:
 - UI harness entry points:
   - webview tests: `web/vitest.config.ts`, `web/src/test/setup.ts`
   - extension UI harness: `src/test/ui/runTest.ts`, `src/test/ui/suite/**`
+- CI harness entry point:
+  - `.github/workflows/tests-on-main.yml` runs `npm run test:webview` and `npm run test:ui` (UI tests run under `xvfb-run`)
 
 ## Quick “Where Do I Edit?” Map
 - Add a new sidebar tab/section: `web/src/components/MCPServers.tsx` + new component in `web/src/components/*`.
 - Add a new search filter (GitHub): `web/src/components/SearchGitHubServers.tsx` + `src/shared/types/rpcTypes.ts` + `src/panels/ExtensionPanel.ts` + `src/utilities/repoSearch.ts`.
 - Change install command assembly for registry servers: `web/src/utils/registryInstall.ts` and install handlers in `src/panels/ExtensionPanel.ts`.
 - Change skill install destinations/agent support: `src/agents.ts` + `src/installer.ts`.
+- Change installed skill list/uninstall UX: `web/src/components/InstalledSkillsList.tsx` + `web/src/components/SearchSkills.tsx` + `src/shared/types/rpcTypes.ts` + `src/panels/ExtensionPanel.ts`.
 - Change SKILL.md discovery rules: `src/skills.ts` + `src/plugin-manifest.ts`.
 - Change chat participant prompt/tool behavior: `src/McpAgent.ts`.

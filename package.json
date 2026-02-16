@@ -10,9 +10,9 @@
     "url": "https://github.com/vikashloomba/copilot-mcp",
     "type": "git"
   },
-  "displayName": "Copilot MCP + Agent Skills",
-  "description": "Search, manage, and install open-source MCP servers and skills for your AI agents.",
-  "version": "0.0.90",
+  "displayName": "Copilot MCP + Agent Skills Manager",
+  "description": "Search, manage, and install Skills and MCP servers for your AI agents.",
+  "version": "0.0.91",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.104.0"
@@ -47,7 +47,9 @@
     "skills",
     "skills.sh",
     "agent skills",
-    "claude skills"
+    "claude skills",
+    "codex skills",
+    "copilot skills"
   ],
   "activationEvents": [
     "onStartupFinished"

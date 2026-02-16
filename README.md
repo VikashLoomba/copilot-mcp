@@ -28,21 +28,21 @@
 
 <div align="center">
   
-![Version](https://img.shields.io/badge/version-0.0.90-blue.svg?cacheSeconds=2592000)
+![Version](https://img.shields.io/badge/version-0.0.91-blue.svg?cacheSeconds=2592000)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![VSCode Extension](https://img.shields.io/badge/VSCode-Extension-blue.svg?logo=visual-studio-code)](https://code.visualstudio.com/api/references/extension-guidelines)
 [![MCP Client](https://img.shields.io/badge/MCP-Client-green.svg)](https://modelcontextprotocol.io/clients)
 
 </div>
 
-> A powerful VS Code extension that lets you **discover & install** open‑source MCP servers and expose their tools to **GitHub Copilot Chat**.
+> A powerful VS Code extension that lets you **discover, install, and manage** open‑source MCP servers and agent skills from one place.
 
 ## ✨ Features
 - 🔧 **MCP Server Management** – connect/manage multiple servers via an intuitive UI  
-- 🚀 **Copilot Integration** – expose MCP tools directly to Copilot Chat  
-- 🎯 **Server Discovery** – automatically discover searchable open‑source servers  
-- ⚡ **Server Health Monitoring** – real‑time status & connection checks  
-- 🔄 **Auto‑Reconnect** – resilient MCP connections
+- 🧠 **Skills Search & Install** – discover skills from `skills.sh` and install to your agents  
+- 🗂️ **Installed Skills Management** – view installed skills and uninstall with agent-level controls  
+- 🚀 **Claude/Codex/Copilot Integration** – expose MCP tools directly to your agents  
+- 🎯 **Server Discovery** – automatically discover open‑source servers  
 
 ## 📦 Installation
 1) Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AutomataLabs.copilot-mcp).  
@@ -60,7 +60,8 @@ Configure via the UI or VS Code settings. Look for the **MCP Servers** icon in t
 ## 🚀 Usage
 1) Open the **MCP Servers** view  
 2) Connect or search for servers  
-3) Use Copilot Chat with your newly added tools
+3) Switch to **Skills** to search and install skills, and manage installed skills  
+4) Use Copilot Chat with your newly added tools and skills
 
 <!-- ✨ New: Discovery + Remote deploy hint -->
 > Tip: When a server supports `npx`/`uvx`, the **Server Discovery** panel shows a **“Deploy via Cloud MCP”** option so you can run it remotely without installing anything.
@@ -80,6 +81,7 @@ PRs and feature requests welcome! See [issues](https://github.com/VikashLoomba/c
 ## ✍️ Author
 **Vikash Loomba**  
 Website: [https://cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)  
+X: [@DevAutomata](https://x.com/DevAutomata)  
 GitHub: [@vikashloomba](https://github.com/vikashloomba)
 
 ## 📝 License
