@@ -168,7 +168,7 @@
     }
   },
   "scripts": {
-    "install:all": "npm install && cd web && npm install --legacy-peer-deps",
+    "install:all": "npm install && npm --prefix web install",
     "start:webview": "cd web && npm run start",
     "build:webview": "npm --prefix web run build",
     "vscode:prepublish": "npm run package-if-needed",
@@ -182,12 +182,15 @@
     "package-force": "npm run build:all",
     "build:all": "npm run compile && npm run build:webview",
     "package-extension": "npm run package && npx @vscode/vsce package -o copilot-mcp-${npm_package_version}.vsix",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
+    "compile-tests": "tsc -p src/test/tsconfig.json",
+    "watch-tests": "tsc -p src/test/tsconfig.json -w",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
+    "test:webview": "npm --prefix web run test",
+    "test:ui": "npm run build:all && npm run compile-tests && node ./out/test/ui/runTest.js",
+    "test:all-ui": "npm run test:webview && npm run test:ui",
     "deploy": "npx @vscode/vsce publish -p $VSCE_PAT",
     "optimize-agent": "tsx src/optimize-mcp-agent.ts"
   },
@@ -201,7 +204,9 @@
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
-    "typescript": "^5.8.3"
+    "mocha": "^11.7.5",
+    "typescript": "^5.8.3",
+    "vscode-extension-tester": "^8.21.0"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.14",
