@@ -15,7 +15,55 @@ on:
         type: string
 
 jobs:
+  wait-for-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+
+    steps:
+    - name: Skip tests gate for manual dispatch
+      if: github.event_name == 'workflow_dispatch'
+      run: echo "Manual dispatch requested. Skipping tests gate."
+
+    - name: Wait for tests workflow to complete for this commit
+      if: github.event_name == 'push'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        api_path="repos/${GITHUB_REPOSITORY}/actions/workflows/tests-on-main.yml/runs?head_sha=${GITHUB_SHA}&event=push&branch=main&per_page=1"
+
+        for attempt in $(seq 1 40); do
+          status="$(gh api "$api_path" --jq '.workflow_runs[0].status // ""')"
+          conclusion="$(gh api "$api_path" --jq '.workflow_runs[0].conclusion // ""')"
+          url="$(gh api "$api_path" --jq '.workflow_runs[0].html_url // ""')"
+
+          if [ -z "$status" ]; then
+            echo "Attempt $attempt/40: tests workflow run not found yet for ${GITHUB_SHA}. Waiting..."
+            sleep 15
+            continue
+          fi
+
+          if [ "$status" != "completed" ]; then
+            echo "Attempt $attempt/40: tests workflow is still '$status'. Waiting..."
+            sleep 15
+            continue
+          fi
+
+          if [ "$conclusion" = "success" ]; then
+            echo "Tests passed for ${GITHUB_SHA}: $url"
+            exit 0
+          fi
+
+          echo "Tests did not pass for ${GITHUB_SHA} (conclusion: $conclusion)."
+          echo "Failing update-version workflow."
+          exit 1
+        done
+
+        echo "Timed out waiting for tests workflow completion for ${GITHUB_SHA}."
+        exit 1
+
   update-version:
+    needs: wait-for-tests
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: update version to') }}"
     runs-on: ubuntu-latest
     permissions:

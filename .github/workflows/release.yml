@@ -17,6 +17,7 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
+      target_sha: ${{ steps.target.outputs.sha }}
 
     steps:
     - uses: actions/checkout@v4
@@ -59,8 +60,45 @@ jobs:
         echo "Create and push the tag first, then rerun this workflow."
         exit 1
 
-  build:
+    - name: Resolve tag target commit
+      id: target
+      run: |
+        sha="$(git rev-list -n 1 "${{ steps.resolve.outputs.tag }}")"
+        if [ -z "$sha" ]; then
+          echo "Unable to resolve commit SHA for tag ${{ steps.resolve.outputs.tag }}"
+          exit 1
+        fi
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  verify-tests:
     needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+
+    steps:
+    - name: Ensure tests passed for release commit
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+      run: |
+        api_path="repos/${GITHUB_REPOSITORY}/actions/workflows/tests-on-main.yml/runs?head_sha=${TARGET_SHA}&event=push&branch=main&status=completed&per_page=1"
+        conclusion="$(gh api "$api_path" --jq '.workflow_runs[0].conclusion // ""')"
+        url="$(gh api "$api_path" --jq '.workflow_runs[0].html_url // ""')"
+
+        if [ "$conclusion" != "success" ]; then
+          echo "No successful tests run found for commit ${TARGET_SHA}."
+          echo "Expected workflow: Run Tests on Main Push"
+          if [ -n "$url" ]; then
+            echo "Latest matching run: $url (conclusion: $conclusion)"
+          fi
+          exit 1
+        fi
+
+        echo "Tests passed for release commit ${TARGET_SHA}: $url"
+
+  build:
+    needs: [prepare, verify-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: read
