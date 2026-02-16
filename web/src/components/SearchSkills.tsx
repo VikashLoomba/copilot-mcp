@@ -9,13 +9,18 @@ import { useVscodeApi } from '@/contexts/VscodeApiContext';
 import { Messenger } from 'vscode-messenger-webview';
 import {
   skillsGetAgentsType,
+  skillsListInstalledType,
   skillsSearchType,
+  skillsUninstallType,
+  type InstalledSkillDto,
   type SkillAgentOptionDto,
   type SkillsGetAgentsResponse,
   type SkillsInstallScope,
   type SkillsSearchItemDto,
-} from '../../../src/shared/types/rpcTypes';
+  type SkillsUninstallResponse,
+} from '../../../src/shared/types/rpcTypes.ts';
 import SkillSearchCard from './SkillSearchCard';
+import InstalledSkillsList from './InstalledSkillsList';
 
 const ITEMS_PER_PAGE = 10;
 type AgentId = SkillAgentOptionDto['id'];
@@ -31,6 +36,9 @@ const SearchSkills: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [installedSkills, setInstalledSkills] = useState<InstalledSkillDto[]>([]);
+  const [isInstalledLoading, setIsInstalledLoading] = useState(false);
+  const [installedError, setInstalledError] = useState<string | null>(null);
 
   const [installScope, setInstallScope] = useState<SkillsInstallScope>('project');
   const [installAllAgents, setInstallAllAgents] = useState(false);
@@ -96,20 +104,11 @@ const SearchSkills: React.FC = () => {
   }, [detectedCompatibleAgents]);
 
   const performSearch = async (page: number, term: string = debouncedSearchTerm) => {
-    if (!term.trim()) {
-      setResults([]);
-      setError(null);
-      setIsLoading(false);
-      setHasMore(false);
-      setCurrentPage(1);
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
     try {
       const response = await messenger.sendRequest(skillsSearchType, { type: 'extension' }, {
-        query: term.trim(),
+        query: term,
         page,
         pageSize: ITEMS_PER_PAGE,
       });
@@ -127,10 +126,53 @@ const SearchSkills: React.FC = () => {
     }
   };
 
+  const loadInstalledSkills = async () => {
+    setIsInstalledLoading(true);
+    setInstalledError(null);
+    try {
+      const response = await messenger.sendRequest(skillsListInstalledType, { type: 'extension' });
+      setInstalledSkills(Array.isArray(response?.skills) ? response.skills : []);
+    } catch (loadError) {
+      console.error(loadError);
+      setInstalledError(loadError instanceof Error ? loadError.message : 'Failed to load installed skills');
+      setInstalledSkills([]);
+    } finally {
+      setIsInstalledLoading(false);
+    }
+  };
+
+  const uninstallInstalledSkill = async (skill: InstalledSkillDto, selectedAgentIds: AgentId[]) => {
+    const response = (await messenger.sendRequest(
+      skillsUninstallType,
+      { type: 'extension' },
+      {
+        skillName: skill.name,
+        scope: skill.scope,
+        selectedAgents: selectedAgentIds,
+      },
+    )) as SkillsUninstallResponse;
+
+    await loadInstalledSkills();
+
+    if (Array.isArray(response?.failed) && response.failed.length > 0) {
+      const failedEntry = response.failed[0];
+      const fallbackMessage = `Could not uninstall from ${failedEntry.agent}.`;
+      throw new Error(failedEntry.error || fallbackMessage);
+    }
+  };
+
   useEffect(() => {
+    const trimmedTerm = debouncedSearchTerm.trim();
     setCurrentPage(1);
     setHasMore(false);
-    void performSearch(1, debouncedSearchTerm);
+    if (!trimmedTerm) {
+      setResults([]);
+      setError(null);
+      void loadInstalledSkills();
+      return;
+    }
+
+    void performSearch(1, trimmedTerm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearchTerm]);
 
@@ -150,13 +192,14 @@ const SearchSkills: React.FC = () => {
   const canGoPrevious = !isLoading && currentPage > 1;
   const canGoNext = !isLoading && hasMore;
   const hasDetectedCompatibleAgents = detectedCompatibleAgents.length > 0;
+  const isShowingInstalled = debouncedSearchTerm.trim().length === 0;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Input
           type="text"
-          placeholder="Search skills.sh..."
+          placeholder="Search skills.sh or browse installed skills..."
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
           className="flex-1"
@@ -253,11 +296,22 @@ const SearchSkills: React.FC = () => {
         </div>
       )}
 
-      {isLoading && <p>Loading...</p>}
-      {error && <p className="text-red-500">Error: {error}</p>}
-      {showNoResults && <p>No skills found for "{debouncedSearchTerm}".</p>}
+      {isShowingInstalled && (
+        <InstalledSkillsList
+          skills={installedSkills}
+          isLoading={isInstalledLoading}
+          error={installedError}
+          onRefresh={() => void loadInstalledSkills()}
+          onUninstall={uninstallInstalledSkill}
+          agents={agents}
+        />
+      )}
 
-      {!isLoading && !error && results.length > 0 && (
+      {!isShowingInstalled && isLoading && <p>Loading...</p>}
+      {!isShowingInstalled && error && <p className="text-red-500">Error: {error}</p>}
+      {!isShowingInstalled && showNoResults && <p>No skills found for "{debouncedSearchTerm}".</p>}
+
+      {!isShowingInstalled && !isLoading && !error && results.length > 0 && (
         <>
           <div className="grid grid-cols-1 gap-4">
             {results.map((item) => (

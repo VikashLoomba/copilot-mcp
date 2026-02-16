@@ -298,9 +298,9 @@ const EXCLUDE_FILES = new Set(['README.md', 'metadata.json']);
 const EXCLUDE_DIRS = new Set(['.git']);
 
 const isExcluded = (name: string, isDirectory: boolean = false): boolean => {
-  if (EXCLUDE_FILES.has(name)) return true;
-  if (name.startsWith('_')) return true;
-  if (isDirectory && EXCLUDE_DIRS.has(name)) return true;
+  if (EXCLUDE_FILES.has(name)) {return true;}
+  if (name.startsWith('_')) {return true;}
+  if (isDirectory && EXCLUDE_DIRS.has(name)) {return true;}
   return false;
 };
 
@@ -935,7 +935,7 @@ export async function listInstalledSkills(
 
           for (const possibleName of possibleNames) {
             const agentSkillDir = join(agentBase, possibleName);
-            if (!isPathSafe(agentBase, agentSkillDir)) continue;
+            if (!isPathSafe(agentBase, agentSkillDir)) {continue;}
 
             try {
               await access(agentSkillDir);
@@ -952,10 +952,10 @@ export async function listInstalledSkills(
             try {
               const agentEntries = await readdir(agentBase, { withFileTypes: true });
               for (const agentEntry of agentEntries) {
-                if (!agentEntry.isDirectory()) continue;
+                if (!agentEntry.isDirectory()) {continue;}
 
                 const candidateDir = join(agentBase, agentEntry.name);
-                if (!isPathSafe(agentBase, candidateDir)) continue;
+                if (!isPathSafe(agentBase, candidateDir)) {continue;}
 
                 try {
                   const candidateSkillMd = join(candidateDir, 'SKILL.md');
@@ -1004,4 +1004,202 @@ export async function listInstalledSkills(
   }
 
   return Array.from(skillsMap.values());
+}
+
+async function findSkillDirectoriesByName(basePath: string, skillName: string): Promise<string[]> {
+  try {
+    const entries = await readdir(basePath, { withFileTypes: true });
+    const matchingDirectories: string[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const skillDir = join(basePath, entry.name);
+      if (!isPathSafe(basePath, skillDir)) {
+        continue;
+      }
+
+      const skillMdPath = join(skillDir, 'SKILL.md');
+      try {
+        await stat(skillMdPath);
+      } catch {
+        continue;
+      }
+
+      const parsedSkill = await parseSkillMd(skillMdPath, { includeInternal: true });
+      if (parsedSkill?.name === skillName) {
+        matchingDirectories.push(skillDir);
+      }
+    }
+
+    return matchingDirectories;
+  } catch {
+    return [];
+  }
+}
+
+async function removeSkillDirectory(path: string): Promise<void> {
+  try {
+    const current = await lstat(path);
+    if (current.isSymbolicLink()) {
+      await rm(path, { force: true });
+      return;
+    }
+
+    await rm(path, { recursive: true, force: true });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function listAgentsWithInstalledSkill(
+  skillName: string,
+  options: { global: boolean; cwd: string }
+): Promise<AgentType[]> {
+  const detectedAgents = await detectInstalledAgents();
+  const installedAgents: AgentType[] = [];
+
+  for (const agentType of detectedAgents) {
+    const agent = agents[agentType];
+    if (options.global && agent.globalSkillsDir === undefined) {
+      continue;
+    }
+
+    const basePath = options.global ? agent.globalSkillsDir! : join(options.cwd, agent.skillsDir);
+    const matchingDirs = await findSkillDirectoriesByName(basePath, skillName);
+    if (matchingDirs.length > 0) {
+      installedAgents.push(agentType);
+    }
+  }
+
+  return installedAgents;
+}
+
+export interface UninstallRecord {
+  agent: AgentType;
+  paths: string[];
+  error?: string;
+}
+
+export interface SkillsUninstallResult {
+  skillName: string;
+  scope: 'project' | 'global';
+  removed: UninstallRecord[];
+  failed: UninstallRecord[];
+  remainingAgents: AgentType[];
+}
+
+export async function uninstallInstalledSkill(
+  options: {
+    skillName: string;
+    agents: AgentType[];
+    global?: boolean;
+    cwd?: string;
+  }
+): Promise<SkillsUninstallResult> {
+  const scope = options.global ? 'global' : 'project';
+  const cwd = options.cwd || process.cwd();
+  const requestedAgents = Array.from(new Set(options.agents));
+
+  const discoveryErrors = new Map<AgentType, string>();
+  const agentToPaths = new Map<AgentType, string[]>();
+  const pathOwners = new Map<string, AgentType[]>();
+
+  for (const agentType of requestedAgents) {
+    const agent = agents[agentType];
+    if (!agent) {
+      discoveryErrors.set(agentType, `Unknown agent: ${agentType}`);
+      continue;
+    }
+
+    if (options.global && agent.globalSkillsDir === undefined) {
+      discoveryErrors.set(
+        agentType,
+        `${agent.displayName} does not support global skill uninstallation`
+      );
+      continue;
+    }
+
+    const basePath = options.global ? agent.globalSkillsDir! : join(cwd, agent.skillsDir);
+    const matchingPaths = await findSkillDirectoriesByName(basePath, options.skillName);
+    agentToPaths.set(agentType, matchingPaths);
+
+    for (const path of matchingPaths) {
+      const owners = pathOwners.get(path) ?? [];
+      if (!owners.includes(agentType)) {
+        owners.push(agentType);
+      }
+      pathOwners.set(path, owners);
+    }
+  }
+
+  const removalErrors = new Map<string, string>();
+  for (const path of pathOwners.keys()) {
+    try {
+      await removeSkillDirectory(path);
+    } catch (error) {
+      removalErrors.set(path, error instanceof Error ? error.message : 'Failed to remove skill path');
+    }
+  }
+
+  const removed: UninstallRecord[] = [];
+  const failed: UninstallRecord[] = [];
+
+  for (const agentType of requestedAgents) {
+    const paths = agentToPaths.get(agentType) ?? [];
+    const discoveryError = discoveryErrors.get(agentType);
+    if (discoveryError) {
+      failed.push({
+        agent: agentType,
+        paths,
+        error: discoveryError,
+      });
+      continue;
+    }
+
+    const failedPath = paths.find((path) => removalErrors.has(path));
+    if (failedPath) {
+      failed.push({
+        agent: agentType,
+        paths,
+        error: removalErrors.get(failedPath),
+      });
+      continue;
+    }
+
+    removed.push({
+      agent: agentType,
+      paths,
+    });
+  }
+
+  const canonicalBase = getCanonicalSkillsDir(options.global ?? false, cwd);
+  const canonicalMatches = await findSkillDirectoriesByName(canonicalBase, options.skillName);
+  const remainingAgents = await listAgentsWithInstalledSkill(options.skillName, {
+    global: options.global ?? false,
+    cwd,
+  });
+
+  if (remainingAgents.length === 0) {
+    for (const canonicalPath of canonicalMatches) {
+      try {
+        await removeSkillDirectory(canonicalPath);
+      } catch {
+        // Canonical cleanup is best-effort once all agent references are gone.
+      }
+    }
+  }
+
+  return {
+    skillName: options.skillName,
+    scope,
+    removed,
+    failed,
+    remainingAgents,
+  };
 }

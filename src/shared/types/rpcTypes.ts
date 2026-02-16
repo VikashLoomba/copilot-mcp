@@ -182,6 +182,41 @@ export interface SkillsInstallResponse {
         failed: InstallRecordDto[];
 }
 
+export interface InstalledSkillDto {
+        name: string;
+        description: string;
+        path: string;
+        canonicalPath: string;
+        scope: SkillsInstallScope;
+        agents: AgentType[];
+        uninstallPolicy: "agent-select" | "all-agents";
+        uninstallPolicyReason?: string;
+}
+
+export interface SkillsListInstalledResponse {
+        skills: InstalledSkillDto[];
+}
+
+export interface SkillsUninstallRequest {
+        skillName: string;
+        scope: SkillsInstallScope;
+        selectedAgents: AgentType[];
+}
+
+export interface UninstallRecordDto {
+        agent: AgentType;
+        paths: string[];
+        error?: string;
+}
+
+export interface SkillsUninstallResponse {
+        skillName: string;
+        scope: SkillsInstallScope;
+        removed: UninstallRecordDto[];
+        failed: UninstallRecordDto[];
+        remainingAgents: AgentType[];
+}
+
 export const skillsSearchType: RequestType<SkillsSearchRequest, SkillsSearchResponse> = {
         method: "skillsSearch",
 };
@@ -199,4 +234,12 @@ export const skillsGetAgentsType: RequestType<void, SkillsGetAgentsResponse> = {
 
 export const skillsInstallType: RequestType<SkillsInstallRequest, SkillsInstallResponse> = {
         method: "skillsInstall",
+};
+
+export const skillsListInstalledType: RequestType<void, SkillsListInstalledResponse> = {
+        method: "skillsListInstalled",
+};
+
+export const skillsUninstallType: RequestType<SkillsUninstallRequest, SkillsUninstallResponse> = {
+        method: "skillsUninstall",
 };

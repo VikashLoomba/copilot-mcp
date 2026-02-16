@@ -35,6 +35,8 @@ import {
         skillsListFromSourceType,
         skillsGetAgentsType,
         skillsInstallType,
+        skillsListInstalledType,
+        skillsUninstallType,
 } from "../shared/types/rpcTypes";
 import type {
         InstallCommandPayload,
@@ -43,15 +45,19 @@ import type {
         ClaudeInstallRequest,
         CodexInstallRequest,
         SkillsInstallRequest,
+        SkillsUninstallRequest,
+        SkillsInstallScope,
 } from "../shared/types/rpcTypes";
 import { searchSkills, listSkillsFromSource, addSkillsFromSource } from "../skills-client";
-import { agents as availableSkillAgents, detectInstalledAgents } from "../agents";
+import { listInstalledSkills, uninstallInstalledSkill } from "../installer";
+import { agents as availableSkillAgents, detectInstalledAgents, isUniversalAgent } from "../agents";
 import type { AgentType } from "../types";
 import axios from "axios";
 import { outputLogger } from "../utilities/outputLogger";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
 import { spawn, execSync, exec, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 // Helper function to read servers from .vscode/mcp.json
 async function getServersFromMcpJsonFile(
@@ -95,6 +101,66 @@ async function getAllServers(): Promise<Record<string, any>> {
 	mergedServers = { ...mergedServers, ...mcpJsonFileServers };
 	
         return mergedServers;
+}
+
+function getAgentSkillsBasePath(
+	scope: SkillsInstallScope,
+	agent: AgentType,
+	workspaceCwd?: string
+): string | undefined {
+	const agentConfig = availableSkillAgents[agent];
+	if (!agentConfig) {
+		return undefined;
+	}
+
+	if (scope === "global") {
+		return agentConfig.globalSkillsDir;
+	}
+
+	if (!workspaceCwd) {
+		return undefined;
+	}
+
+	return join(workspaceCwd, agentConfig.skillsDir);
+}
+
+function getInstalledSkillUninstallPolicy(
+	scope: SkillsInstallScope,
+	agents: AgentType[],
+	workspaceCwd?: string
+): { uninstallPolicy: "agent-select" | "all-agents"; uninstallPolicyReason?: string } {
+	if (scope === "project" && agents.some((agent) => isUniversalAgent(agent))) {
+		return {
+			uninstallPolicy: "all-agents",
+			uninstallPolicyReason:
+				"This project skill lives in a shared .agents/skills directory, so uninstalling requires all listed agents.",
+		};
+	}
+
+	const basePathToAgents = new Map<string, AgentType[]>();
+	for (const agent of agents) {
+		const basePath = getAgentSkillsBasePath(scope, agent, workspaceCwd);
+		if (!basePath) {
+			continue;
+		}
+
+		const normalizedBasePath = resolve(basePath);
+		const current = basePathToAgents.get(normalizedBasePath) ?? [];
+		current.push(agent);
+		basePathToAgents.set(normalizedBasePath, current);
+	}
+
+	for (const sharedAgents of basePathToAgents.values()) {
+		if (sharedAgents.length > 1) {
+			return {
+				uninstallPolicy: "all-agents",
+				uninstallPolicyReason:
+					"These agents share the same skills directory in this scope, so uninstalling requires all listed agents.",
+			};
+		}
+	}
+
+	return { uninstallPolicy: "agent-select" };
 }
 
 const INPUT_PLACEHOLDER_REGEX = /\\?\${input:([^}]+)}/g;
@@ -915,6 +981,128 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					source,
 					installScope: payload.installScope,
 					allAgents: payload.installAllAgents,
+				});
+				throw error;
+			}
+		});
+
+		messenger.onRequest(skillsListInstalledType, async () => {
+			const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			const listOptions = workspaceCwd ? { cwd: workspaceCwd } : { global: true as const };
+
+			try {
+				const installedSkills = await listInstalledSkills(listOptions);
+				const sortedSkills = [...installedSkills].sort((a, b) => {
+					if (a.scope !== b.scope) {
+						return a.scope === "project" ? -1 : 1;
+					}
+					return a.name.localeCompare(b.name);
+				});
+
+				return {
+					skills: sortedSkills.map((skill) => {
+						const normalizedAgents = Array.from(new Set(skill.agents))
+							.filter((agent): agent is AgentType => Boolean(availableSkillAgents[agent]))
+							.sort((a, b) =>
+								availableSkillAgents[a].displayName.localeCompare(
+									availableSkillAgents[b].displayName
+								)
+							);
+
+					return {
+							name: skill.name,
+							description: skill.description,
+							path: skill.path,
+							canonicalPath: skill.canonicalPath,
+							scope: skill.scope,
+							agents: normalizedAgents,
+							...getInstalledSkillUninstallPolicy(skill.scope, normalizedAgents, workspaceCwd),
+						};
+					}),
+				};
+			} catch (error) {
+				logError(error as Error, "skills-list-installed", { hasWorkspace: Boolean(workspaceCwd) });
+				throw error;
+			}
+		});
+
+		messenger.onRequest(skillsUninstallType, async (payload: SkillsUninstallRequest) => {
+			const skillName = payload.skillName.trim();
+			if (!skillName) {
+				throw new Error("Skill name is required");
+			}
+
+			const scope = payload.scope;
+			const isGlobalUninstall = scope === "global";
+			const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (!isGlobalUninstall && !workspaceCwd) {
+				throw new Error(
+					"Project uninstalls require an open workspace folder. Open a folder or switch to Global scope."
+				);
+			}
+
+			const installedSkills = await listInstalledSkills(
+				isGlobalUninstall
+					? { global: true }
+					: { global: false, cwd: workspaceCwd }
+			);
+
+			const installedSkill = installedSkills.find(
+				(skill) => skill.scope === scope && skill.name === skillName
+			);
+
+			if (!installedSkill) {
+				throw new Error(`Skill "${skillName}" is not installed in ${scope} scope.`);
+			}
+
+			const installedAgentSet = new Set(installedSkill.agents);
+			const selectedAgents = Array.from(
+				new Set(
+					payload.selectedAgents.filter(
+						(agent): agent is AgentType =>
+							Boolean(availableSkillAgents[agent]) && installedAgentSet.has(agent)
+					)
+				)
+			);
+
+			if (selectedAgents.length === 0) {
+				throw new Error("Select at least one installed agent to uninstall.");
+			}
+
+			const uninstallPolicy = getInstalledSkillUninstallPolicy(
+				scope,
+				installedSkill.agents,
+				workspaceCwd
+			);
+			const selectedAgentSet = new Set(selectedAgents);
+			const selectedAllInstalledAgents = installedSkill.agents.every((agent) =>
+				selectedAgentSet.has(agent)
+			);
+
+			if (uninstallPolicy.uninstallPolicy === "all-agents" && !selectedAllInstalledAgents) {
+				throw new Error(
+					uninstallPolicy.uninstallPolicyReason ??
+						"This skill requires uninstalling from all listed agents at once."
+				);
+			}
+
+			const targetAgents =
+				uninstallPolicy.uninstallPolicy === "all-agents"
+					? installedSkill.agents
+					: selectedAgents;
+
+			try {
+				return await uninstallInstalledSkill({
+					skillName: installedSkill.name,
+					agents: targetAgents,
+					global: isGlobalUninstall,
+					cwd: isGlobalUninstall ? undefined : workspaceCwd,
+				});
+			} catch (error) {
+				logError(error as Error, "skills-uninstall", {
+					skillName: installedSkill.name,
+					scope,
+					selectedAgentCount: targetAgents.length,
 				});
 				throw error;
 			}
