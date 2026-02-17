@@ -170,6 +170,7 @@ When adding or changing extension/webview behavior:
   - extension-internal: `src/skills-client.ts`
   - root-level export-oriented variant: `skills-client.ts`
   Keep behavior aligned if shared APIs change.
+- Vendored Copilot provider source of truth is `vendor/opencode-copilot/src/**`, synced via `scripts/sync-opencode-copilot.mjs`. Do not hand-edit vendored source files.
 - UI harness entry points:
   - webview tests: `web/vitest.config.ts`, `web/src/test/setup.ts`
   - extension UI harness: `src/test/ui/runTest.ts`, `src/test/ui/suite/**`
@@ -184,3 +185,4 @@ When adding or changing extension/webview behavior:
 - Change installed skill list/uninstall UX: `web/src/components/InstalledSkillsList.tsx` + `web/src/components/SearchSkills.tsx` + `src/shared/types/rpcTypes.ts` + `src/panels/ExtensionPanel.ts`.
 - Change SKILL.md discovery rules: `src/skills.ts` + `src/plugin-manifest.ts`.
 - Change chat participant prompt/tool behavior: `src/McpAgent.ts`.
+- Sync vendored Copilot provider from upstream: `scripts/sync-opencode-copilot.mjs` + `.github/workflows/sync-opencode-copilot.yml` + `vendor/opencode-copilot/**`.
