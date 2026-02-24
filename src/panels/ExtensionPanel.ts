@@ -595,6 +595,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "copilotMcpView";
 	public static readonly launcherViewType = "copilotMcpLauncherView";
 	private static readonly secondarySidebarContainerId = "copilotMcpSidebar";
+	private readonly launcherRedirectDelays = [0, 150, 600];
 	octokit: any;
 
 	constructor(
@@ -620,23 +621,33 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 			localResourceRoots: [this._extensionUri],
 		};
 		webviewView.webview.html = this._getLauncherHtml(webviewView.webview);
+		let hasRedirectedForCurrentVisibility = false;
 
 		const scheduleRedirect = () => {
 			// Switching containers during view resolve can be ignored by VS Code.
 			// Retry a few times to reliably jump to the secondary container.
-			const delays = [0, 150, 600];
-			for (const delay of delays) {
+			for (const delay of this.launcherRedirectDelays) {
 				setTimeout(() => {
 					void this.revealSecondarySidebar();
 				}, delay);
 			}
 		};
 
-		scheduleRedirect();
+		const redirectIfVisible = () => {
+			if (!webviewView.visible || hasRedirectedForCurrentVisibility) {
+				return;
+			}
+			hasRedirectedForCurrentVisibility = true;
+			scheduleRedirect();
+		};
+
+		redirectIfVisible();
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
-				scheduleRedirect();
+				redirectIfVisible();
+				return;
 			}
+			hasRedirectedForCurrentVisibility = false;
 		});
 	}
 
