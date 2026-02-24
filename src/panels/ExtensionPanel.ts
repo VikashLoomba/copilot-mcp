@@ -595,6 +595,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "copilotMcpView";
 	public static readonly launcherViewType = "copilotMcpLauncherView";
 	private static readonly secondarySidebarContainerId = "copilotMcpSidebar";
+	// Retry immediately, then after short and medium delays to handle VS Code view-container timing.
 	private readonly launcherRedirectDelays = [0, 150, 600];
 	octokit: any;
 
@@ -645,9 +646,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
 				redirectIfVisible();
-				return;
+			} else {
+				hasRedirectedForCurrentVisibility = false;
 			}
-			hasRedirectedForCurrentVisibility = false;
 		});
 	}
 
