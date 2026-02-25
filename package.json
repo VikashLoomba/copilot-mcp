@@ -194,7 +194,9 @@
     "test:ui": "npm run build:all && npm run compile-tests && node ./out/test/ui/runTest.js",
     "test:all-ui": "npm run test:webview && npm run test:ui",
     "deploy": "npx @vscode/vsce publish -p $VSCE_PAT",
-    "optimize-agent": "tsx src/optimize-mcp-agent.ts"
+    "optimize-agent": "tsx src/optimize-mcp-agent.ts",
+    "sync:copilot-provider": "node scripts/sync-opencode-copilot.mjs",
+    "sync:copilot-provider:check": "node scripts/sync-opencode-copilot.mjs --check"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -214,6 +216,7 @@
     "@ai-sdk/openai-compatible": "^0.2.14",
     "@ax-llm/ax": "^14.0.16",
     "@ax-llm/ax-ai-sdk-provider": "^14.0.16",
+    "@copilot-mcp/opencode-copilot": "file:vendor/opencode-copilot",
     "@octokit/rest": "^21.1.1",
     "@opentelemetry/api-logs": "^0.200.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.201.0",
@@ -228,5 +231,6 @@
     "vscode-messenger": "^0.5.1",
     "xdg-basedir": "^5.1.0",
     "zod": "^3.24.4"
-  }
+  },
+  "packageManager": "pnpm@10.6.5+sha512.cdf928fca20832cd59ec53826492b7dc25dc524d4370b6b4adbf65803d32efaa6c1c88147c0ae4e8d579a6c9eec715757b50d4fa35eea179d868eada4ed043af"
 }

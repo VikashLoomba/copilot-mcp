@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
-import { ai, AxAI, AxAIOpenAIModel,  } from "@ax-llm/ax";
-import { logError } from '../telemetry/standardizedTelemetry';
+import { ai, AxAI, AxAIOpenAIModel } from "@ax-llm/ax";
+import { logError } from "../telemetry/standardizedTelemetry";
 
 const GITHUB_AUTH_PROVIDER_ID = "github";
 // The GitHub Authentication Provider accepts the scopes described here:
@@ -16,8 +16,9 @@ export class CopilotChatProvider {
 	private copilotToken: string | undefined;
 	private readonly defaultHeaders: Record<string, string> = {
 		"Editor-Version": `vscode/${vscode.version}`,
-		"Editor-Plugin-Version": "copilot-chat/0.27.0",
-		"X-GitHub-Api-Version": "2025-04-01",
+		"Editor-Plugin-Version": "copilot-chat/0.35.0",
+		"User-Agent": "GitHubCopilotChat/0.35.0",
+		"Copilot-Integration-Id": "vscode-chat",
 	};
 	private _headers: Record<string, string> = { ...this.defaultHeaders };
 	private _baseUrl = `https://api.githubcopilot.com`;
@@ -34,23 +35,29 @@ export class CopilotChatProvider {
 			throw new Error("CopilotChatProvider is not initialized");
 		}
 		if (!this._provider) {
-			this.provider = ai({
-				name: 'openai',
-				apiKey: this.copilotToken,
-				apiURL: this.baseUrl,
-				options: {
-					fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-						init!.headers = {
-							...init?.headers,
-							...this.headers,
-						};
-						return fetch(input, init);
-					}
+			this.provider = ai(
+				//@ts-expect-error config.model returns error but this is a valid model.
+				{
+					name: "openai",
+					apiKey: this.copilotToken,
+					apiURL: this.baseUrl,
+					options: {
+						fetch: (
+							input: RequestInfo | URL,
+							init?: RequestInit,
+						) => {
+							init!.headers = {
+								...init?.headers,
+								...this.headers,
+							};
+							return fetch(input, init);
+						},
+					},
+					config: {
+						model: "gpt-5.2-codex",
+					},
 				},
-				config: {
-					model: AxAIOpenAIModel.GPT5Mini,
-				},
-			});
+			);
 		}
 		return this._provider!;
 	}
@@ -75,7 +82,7 @@ export class CopilotChatProvider {
 
 	// Static method to configure the singleton instance without forcing authentication
 	public static async configure(
-		context: vscode.ExtensionContext
+		context: vscode.ExtensionContext,
 	): Promise<CopilotChatProvider> {
 		const instance = CopilotChatProvider.getInstance();
 		await instance._configure(context);
@@ -101,7 +108,9 @@ export class CopilotChatProvider {
 		return this._initialized;
 	}
 
-	public async ensureInitialized(options?: { interactive?: boolean }): Promise<void> {
+	public async ensureInitialized(options?: {
+		interactive?: boolean;
+	}): Promise<void> {
 		const interactive = options?.interactive ?? true;
 		if (this._initialized) {
 			return;
@@ -121,7 +130,9 @@ export class CopilotChatProvider {
 		}
 	}
 
-	public async getProvider(options?: { interactive?: boolean }): Promise<AxAI> {
+	public async getProvider(options?: {
+		interactive?: boolean;
+	}): Promise<AxAI> {
 		await this.ensureInitialized(options);
 		return this.provider;
 	}
@@ -131,7 +142,7 @@ export class CopilotChatProvider {
 			const session = await vscode.authentication.getSession(
 				GITHUB_AUTH_PROVIDER_ID,
 				SCOPES,
-				{ createIfNone: interactive }
+				{ createIfNone: interactive },
 			);
 			if (!session) {
 				// Silent initialization failed; wait for user-triggered call.
@@ -139,24 +150,24 @@ export class CopilotChatProvider {
 			}
 			this.session = session;
 			this.copilotToken = undefined;
-		this._provider = undefined;
+			this._provider = undefined;
 			this._headers = { ...this.defaultHeaders };
 			await this.getCopilotToken(this._context!);
 			const existingSessions = await vscode.authentication.getAccounts(
-				GITHUB_AUTH_PROVIDER_ID
+				GITHUB_AUTH_PROVIDER_ID,
 			);
 			console.log("existingSessions", existingSessions);
 			this._initialized = true;
 			console.log("CopilotChatProvider initialization complete");
 		} catch (error) {
 			if (interactive) {
-				logError(error as Error, 'github-authentication', {
+				logError(error as Error, "github-authentication", {
 					provider: GITHUB_AUTH_PROVIDER_ID,
-					scopes: SCOPES.join(','),
+					scopes: SCOPES.join(","),
 					createIfNone: interactive,
 				});
 				vscode.window.showErrorMessage(
-					"GitHub authentication failed. Please sign in to GitHub."
+					"GitHub authentication failed. Please sign in to GitHub.",
 				);
 				throw error;
 			}
@@ -164,7 +175,7 @@ export class CopilotChatProvider {
 	}
 
 	private async getCopilotToken(
-		context: vscode.ExtensionContext
+		context: vscode.ExtensionContext,
 	): Promise<void> {
 		if (!this.session?.accessToken) {
 			throw new Error("No GitHub authentication token available");
@@ -180,7 +191,7 @@ export class CopilotChatProvider {
 						Authorization: `token ${this.session.accessToken}`,
 						...this.headers,
 					},
-				}
+				},
 			);
 
 			if (githubTokenResponse.ok) {
@@ -190,10 +201,10 @@ export class CopilotChatProvider {
 					this.copilotToken = tokenData.token;
 					await context.globalState.update(
 						"copilotToken",
-						this.copilotToken
+						this.copilotToken,
 					);
 					console.log(
-						"Successfully retrieved Copilot token from GitHub API"
+						"Successfully retrieved Copilot token from GitHub API",
 					);
 					if (tokenData.endpoints.api) {
 						console.log("Got and api url.");
@@ -206,7 +217,7 @@ export class CopilotChatProvider {
 									...this.headers,
 									Authorization: `token ${this.session.accessToken}`,
 								},
-							}
+							},
 						);
 						if (userResponseTest.ok) {
 							const userdata = await userResponseTest.json();
@@ -220,7 +231,7 @@ export class CopilotChatProvider {
 							};
 						} else {
 							console.log(
-								"failed to fetch user data from copilot internal"
+								"failed to fetch user data from copilot internal",
 							);
 							console.log(await userResponseTest.text());
 						}
@@ -230,7 +241,7 @@ export class CopilotChatProvider {
 			}
 
 			console.log(
-				"Could not get Copilot token from GitHub API, falling back to device flow"
+				"Could not get Copilot token from GitHub API, falling back to device flow",
 			);
 
 			// If direct token retrieval failed, we need to initiate the device code flow
@@ -242,19 +253,18 @@ export class CopilotChatProvider {
 					headers: {
 						Accept: "application/json",
 						"Content-Type": "application/json",
-						"User-Agent": "GithubCopilot/1.155.0",
-						"editor-version": `vscode/${vscode.version}`,
+						"User-Agent": "GitHubCopilotChat/0.35.0",
 					},
 					body: JSON.stringify({
 						client_id: GITHUB_COPILOT_CLIENT_ID,
 						scope: "read:user",
 					}),
-				}
+				},
 			);
 
 			if (!deviceCodeResponse.ok) {
 				throw new Error(
-					`Failed to get device code: ${deviceCodeResponse.statusText}`
+					`Failed to get device code: ${deviceCodeResponse.statusText}`,
 				);
 			}
 
@@ -269,7 +279,7 @@ export class CopilotChatProvider {
 				.then((selection) => {
 					if (selection === "Open in Browser") {
 						vscode.env.openExternal(
-							vscode.Uri.parse(verification_uri)
+							vscode.Uri.parse(verification_uri),
 						);
 					}
 				});
@@ -280,7 +290,7 @@ export class CopilotChatProvider {
 
 			while (!authenticated) {
 				await new Promise((resolve) =>
-					setTimeout(resolve, pollingInterval)
+					setTimeout(resolve, pollingInterval),
 				);
 
 				const tokenResponse = await fetch(
@@ -290,8 +300,7 @@ export class CopilotChatProvider {
 						headers: {
 							Accept: "application/json",
 							"Content-Type": "application/json",
-							"User-Agent": "GithubCopilot/1.155.0",
-							"editor-version": `vscode/${vscode.version}`,
+							"User-Agent": "GitHubCopilotChat/0.35.0",
 						},
 						body: JSON.stringify({
 							client_id: GITHUB_COPILOT_CLIENT_ID,
@@ -299,7 +308,7 @@ export class CopilotChatProvider {
 							grant_type:
 								"urn:ietf:params:oauth:grant-type:device_code",
 						}),
-					}
+					},
 				);
 
 				const tokenData = await tokenResponse.json();
@@ -311,13 +320,12 @@ export class CopilotChatProvider {
 					// Store the token for future use
 					await context.globalState.update(
 						"copilotToken",
-						this.copilotToken
+						this.copilotToken,
 					);
 
 					vscode.window.showInformationMessage(
-						"GitHub Copilot authentication successful!"
+						"GitHub Copilot authentication successful!",
 					);
-
 				} else if (tokenData.error === "authorization_pending") {
 					// User hasn't completed authentication yet, continue polling
 					continue;
@@ -325,21 +333,21 @@ export class CopilotChatProvider {
 					throw new Error(
 						`Authentication error: ${
 							tokenData.error_description || tokenData.error
-						}`
+						}`,
 					);
 				}
 			}
 		} catch (error: any) {
 			console.error("Error getting Copilot token:", error);
-			
+
 			// Log token retrieval failure with standardized telemetry
-			logError(error, 'copilot-token-retrieval', {
+			logError(error, "copilot-token-retrieval", {
 				clientId: GITHUB_COPILOT_CLIENT_ID,
-				context: 'token-exchange',
+				context: "token-exchange",
 			});
-			
+
 			throw new Error(
-				`Failed to authenticate with GitHub Copilot: ${error.message}`
+				`Failed to authenticate with GitHub Copilot: ${error.message}`,
 			);
 		}
 	}
@@ -353,16 +361,19 @@ export class CopilotChatProvider {
 				if (e.provider.id === GITHUB_AUTH_PROVIDER_ID) {
 					this.session = undefined;
 					this.copilotToken = undefined;
-		this._provider = undefined;
+					this._provider = undefined;
 					this._headers = { ...this.defaultHeaders };
 					this._initialized = false;
 					try {
 						await this.ensureInitialized({ interactive: false });
 					} catch (sessionError) {
-						console.warn("Silent GitHub session refresh failed", sessionError);
+						console.warn(
+							"Silent GitHub session refresh failed",
+							sessionError,
+						);
 					}
 				}
-			})
+			}),
 		);
 	}
 
@@ -409,10 +420,10 @@ export class CopilotChatProvider {
 				console.error(
 					"Failed to fetch models:",
 					response.status,
-					response.statusText
+					response.statusText,
 				);
 				throw new Error(
-					`Failed to fetch models: ${response.status} ${response.statusText}`
+					`Failed to fetch models: ${response.status} ${response.statusText}`,
 				);
 			}
 
@@ -434,10 +445,10 @@ export class CopilotChatProvider {
 				console.error(
 					"Failed to fetch models:",
 					response.status,
-					response.statusText
+					response.statusText,
 				);
 				throw new Error(
-					`Failed to fetch models: ${response.status} ${response.statusText}`
+					`Failed to fetch models: ${response.status} ${response.statusText}`,
 				);
 			}
 
@@ -447,7 +458,7 @@ export class CopilotChatProvider {
 			const models = data.data;
 			// filter out the models that are not enabled for the current editor
 			const enabledModels = models.filter(
-				(model: any) => model.model_picker_enabled
+				(model: any) => model.model_picker_enabled,
 			);
 
 			if (enabledModels.length === 0) {
@@ -457,17 +468,17 @@ export class CopilotChatProvider {
 
 			// Find models matching the models we want in the exact order of preference
 			const preferredModelIds = [
-				"claude-3.7-sonnet",
-				"o3-mini",
-				"gemini-2.0-flash-001",
-				"claude-3.5-sonnet",
-				"gpt-4.1",
+				"claude-sonnet-4.6",
+				"gpt-5.3-codex",
+				"gpt-5.2-codex",
+				"gpt-5.1-codex",
+				"gpt-5.1-codex-codex-max",
 			];
 
 			// Instead of filter, we'll find the first model that matches our preferences in order
 			for (const preferredId of preferredModelIds) {
 				const foundModel = enabledModels.find(
-					(model: any) => model.id === preferredId
+					(model: any) => model.id === preferredId,
 				);
 				if (foundModel) {
 					this.modelDetails = foundModel;

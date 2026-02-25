@@ -75,6 +75,27 @@ Configure via the UI or VS Code settings. Look for the **MCP Servers** icon in t
 - Local or remote workflows (Cloud MCP)
 - Join a growing, interoperable ecosystem
 
+## 🔄 Maintainer: Vendored Copilot Provider Sync
+This repo vendors an upstream Copilot provider from `anomalyco/opencode` under:
+
+- `vendor/opencode-copilot/src/**`
+
+Sync it with:
+
+```bash
+npm run sync:copilot-provider
+```
+
+Check drift without writing files:
+
+```bash
+npm run sync:copilot-provider:check
+```
+
+Automated daily sync PRs are created by:
+
+- `.github/workflows/sync-opencode-copilot.yml`
+
 ## 👥 Contributing
 PRs and feature requests welcome! See [issues](https://github.com/VikashLoomba/copilot-mcp/issues).
 

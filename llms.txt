@@ -43,6 +43,7 @@ Most implementation questions are answered in:
 - Test workflow: [.github/workflows/tests-on-main.yml](./.github/workflows/tests-on-main.yml)
 - Version workflow: [.github/workflows/update-version.yml](./.github/workflows/update-version.yml)
 - Build/release workflow: [.github/workflows/release.yml](./.github/workflows/release.yml)
+- Vendored provider sync workflow: [.github/workflows/sync-opencode-copilot.yml](./.github/workflows/sync-opencode-copilot.yml)
 
 ## Commands
 
