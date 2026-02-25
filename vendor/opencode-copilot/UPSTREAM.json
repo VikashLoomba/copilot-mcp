@@ -1,0 +1,7 @@
+{
+  "repo": "https://github.com/anomalyco/opencode.git",
+  "ref": "dev",
+  "sourcePath": "packages/opencode/src/provider/sdk/copilot",
+  "commit": "92912219dfa0ef51c88a329e04e0b69446328c2b",
+  "syncedAt": "2026-02-17T21:03:51.091Z"
+}

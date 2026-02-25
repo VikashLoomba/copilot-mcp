@@ -39,4 +39,42 @@ suite('Copilot MCP UI Smoke', () => {
       'Expected copilot-mcp.showLogs command to be registered'
     );
   });
+
+  test('launcher container is separate from sidebar container', async () => {
+    const extension = vscode.extensions.all.find(
+      (candidate) => candidate.packageJSON?.name === 'copilot-mcp'
+    );
+    if (!extension) {
+      assert.fail('Expected copilot-mcp extension metadata');
+    }
+
+    const launcherViews =
+      extension.packageJSON?.contributes?.views?.copilotMcpLauncher ?? [];
+    const hasLauncherView = launcherViews.some(
+      (view: { id?: string }) => view.id === 'copilotMcpLauncherView'
+    );
+    assert.ok(
+      hasLauncherView,
+      'Expected copilotMcpLauncherView to be contributed to copilotMcpLauncher'
+    );
+
+    const secondaryContainerId =
+      extension.packageJSON?.contributes?.viewsContainers?.secondarySidebar?.[0]
+        ?.id;
+    const activityContainerId =
+      extension.packageJSON?.contributes?.viewsContainers?.activitybar?.[0]?.id;
+    assert.ok(
+      secondaryContainerId,
+      'Expected copilotMcpSidebar secondarySidebar container id to be defined'
+    );
+    assert.ok(
+      activityContainerId,
+      'Expected copilotMcpLauncher activitybar container id to be defined'
+    );
+    assert.notStrictEqual(
+      secondaryContainerId,
+      activityContainerId,
+      'Expected launcher and sidebar containers to be distinct'
+    );
+  });
 });
