@@ -171,7 +171,7 @@ When adding or changing extension/webview behavior:
   - root-level export-oriented variant: `skills-client.ts`
   Keep behavior aligned if shared APIs change.
 - Vendored Copilot provider source of truth is `vendor/opencode-copilot/src/**`, synced via `scripts/sync-opencode-copilot.mjs`. Do not hand-edit vendored source files.
-- A Husky pre-commit hook auto-bumps `package.json` patch version (and stages `package-lock.json`) when staged extension source changes are detected under `src/**` or `web/src/**` (excluding tests).
+- A Husky pre-commit hook auto-bumps `package.json` patch version and stages `package.json` plus `package-lock.json` when staged extension source changes are detected under `src/**` or `web/src/**` (excluding tests).
 - UI harness entry points:
   - webview tests: `web/vitest.config.ts`, `web/src/test/setup.ts`
   - extension UI harness: `src/test/ui/runTest.ts`, `src/test/ui/suite/**`

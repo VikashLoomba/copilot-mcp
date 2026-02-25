@@ -26,7 +26,16 @@ function runCommand(command, args) {
 }
 
 function getStagedFiles() {
-  const output = runGit(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]);
+  const output = runGit(["diff", "--cached", "--name-only", "--diff-filter=ACMRD"]);
+  if (!output) {
+    return [];
+  }
+
+  return output.split("\n").map((file) => file.trim()).filter(Boolean);
+}
+
+function getUnstagedVersionFileChanges() {
+  const output = runGit(["diff", "--name-only", "--", "package.json", "package-lock.json"]);
   if (!output) {
     return [];
   }
@@ -76,6 +85,13 @@ function main() {
   if (headVersion !== indexVersion) {
     console.log(`[version-bump] Version already changed (${headVersion} -> ${indexVersion}); skipping auto-bump.`);
     return;
+  }
+
+  const unstagedVersionFileChanges = getUnstagedVersionFileChanges();
+  if (unstagedVersionFileChanges.length > 0) {
+    throw new Error(
+      `Unstaged changes found in ${unstagedVersionFileChanges.join(", ")}. Stage or stash those changes before committing extension source updates.`,
+    );
   }
 
   console.log("[version-bump] Extension source changes detected in staged files:");
