@@ -63,6 +63,14 @@ suite('Copilot MCP UI Smoke', () => {
         ?.id;
     const activityContainerId =
       extension.packageJSON?.contributes?.viewsContainers?.activitybar?.[0]?.id;
+    assert.ok(
+      secondaryContainerId,
+      'Expected copilotMcpSidebar secondarySidebar container id to be defined'
+    );
+    assert.ok(
+      activityContainerId,
+      'Expected copilotMcpLauncher activitybar container id to be defined'
+    );
     assert.notStrictEqual(
       secondaryContainerId,
       activityContainerId,

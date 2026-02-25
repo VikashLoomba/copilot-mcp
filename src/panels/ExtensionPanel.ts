@@ -596,7 +596,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 	public static readonly launcherViewType = "copilotMcpLauncherView";
 	private static readonly secondarySidebarContainerId = "copilotMcpSidebar";
 	// Retry immediately, then after short and medium delays to handle VS Code view-container timing.
-	private readonly launcherRedirectDelays = [0, 150, 600];
+	private static readonly launcherRedirectDelays = [0, 150, 600];
 	octokit: any;
 
 	constructor(
@@ -627,7 +627,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		const scheduleRedirect = () => {
 			// Switching containers during view resolve can be ignored by VS Code.
 			// Retry a few times to reliably jump to the secondary container.
-			for (const delay of this.launcherRedirectDelays) {
+			for (const delay of CopilotMcpViewProvider.launcherRedirectDelays) {
 				setTimeout(() => {
 					void this.revealSecondarySidebar();
 				}, delay);
