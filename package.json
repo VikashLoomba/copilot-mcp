@@ -170,6 +170,7 @@
     }
   },
   "scripts": {
+    "prepare": "husky",
     "install:all": "npm install && npm --prefix web install",
     "start:webview": "cd web && npm run start",
     "build:webview": "npm --prefix web run build",
@@ -208,6 +209,7 @@
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
+    "husky": "^9.1.7",
     "mocha": "^11.7.5",
     "typescript": "^5.8.3",
     "vscode-extension-tester": "^8.21.0"

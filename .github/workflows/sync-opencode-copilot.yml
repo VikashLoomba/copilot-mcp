@@ -101,7 +101,7 @@ jobs:
         with:
           branch: chore/sync-opencode-copilot
           delete-branch: false
-          title: chore: sync opencode copilot provider
+          title: "chore: sync opencode copilot provider"
           commit-message: "chore: sync opencode copilot provider to ${{ steps.upstream.outputs.commit }}"
           body: |
             Automated sync of vendored Copilot provider sources.
