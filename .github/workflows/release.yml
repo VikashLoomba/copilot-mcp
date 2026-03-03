@@ -160,8 +160,10 @@ jobs:
       with:
         name: build-artifacts
 
-    - name: Install production dependencies
-      run: npm ci --production
+    - name: Install dependencies for packaging
+      env:
+        HUSKY: 0
+      run: npm ci
 
     - name: Validate build artifacts
       run: |
