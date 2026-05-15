@@ -4,6 +4,9 @@ node_modules
 .vscode-test/
 *.vsix
 .env
+.DS_Store
+.symphony.log
+.symphony.pid
 
 # Accidental TS emit artifacts (source-adjacent JS/maps)
 src/**/*.js
