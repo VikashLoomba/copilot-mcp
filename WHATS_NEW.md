@@ -1,6 +1,17 @@
 # What's New in Copilot MCP!
 
-*Sponsored by [Cloud MCP](https://cloudmcp.run?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_referrer=copilot-mcp) that significantly improves tool calling success by AI agents!*
+*Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.93) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.93) that significantly improves tool calling success by AI agents!*
+
+## Version 0.0.93 - Telemetry Overhaul + Smarter CloudMCP Deploys
+*(June 11 2026)*
+
+This release replaces the old telemetry pipeline and makes "Deploy on CloudMCP" land you exactly where you need to be.
+
+What's new
+
+- **Telemetry overhauled.** The old, broken telemetry pipeline has been removed entirely. The new telemetry is minimal and anonymous — basic usage events like search/install/link clicks, including the search terms you type (truncated), with no file contents and no account identifiers — and it fully respects VS Code's telemetry settings. Details in the [README Telemetry section](https://github.com/VikashLoomba/copilot-mcp#telemetry).
+- **"Deploy on CloudMCP" now takes you to a search prefilled for the server you clicked**, instead of a generic landing page.
+- **Reliability and CI fixes**, including more resilient release packaging.
 
 ## Version 0.0.91 - Installed Skills Management + CI Test Automation
 *(February 16 2026)*

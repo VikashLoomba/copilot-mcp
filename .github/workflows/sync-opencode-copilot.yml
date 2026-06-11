@@ -1,8 +1,11 @@
 name: Sync Opencode Copilot Provider
 
 on:
-  schedule:
-    - cron: "17 4 * * *"
+  # Schedule disabled 2026-06-11: every nightly run has failed for 10+ days
+  # straight (see Actions history). Re-enable once the sync job is fixed;
+  # manual runs remain available via workflow_dispatch.
+  # schedule:
+  #   - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       ref:

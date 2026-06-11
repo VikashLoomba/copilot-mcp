@@ -1205,9 +1205,21 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				},
 			});
 
-			// Redirect to the main CloudMCP dashboard with tracking parameters
-			const deployUrl = 'https://cloudmcp.run/dashboard?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy';
-			
+			// Build the repo identity for the discover deep link. The webview sends
+			// the GitHub full name ("owner/repo") as repoName, so only prefix the
+			// owner when the name does not already include it.
+			const repoName = typeof payload.repoName === 'string' ? payload.repoName.trim() : '';
+			const repoOwner = typeof payload.repoOwner === 'string' ? payload.repoOwner.trim() : '';
+			const repoSlug = repoName.includes('/')
+				? repoName
+				: (repoOwner && repoName ? `${repoOwner}/${repoName}` : '');
+
+			// Deep link to the dashboard discover page for this repo, falling back
+			// to the main CloudMCP dashboard when the repo identity is absent
+			const deployUrl = repoSlug
+				? `https://cloudmcp.run/dashboard/discover?q=${encodeURIComponent(repoSlug)}&utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy-repo-card`
+				: 'https://cloudmcp.run/dashboard?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy';
+
 			// Open external URL with proper referrer tracking
 			await vscode.env.openExternal(vscode.Uri.parse(deployUrl));
 			
