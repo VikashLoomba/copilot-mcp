@@ -1,6 +1,4 @@
-import { logger, getLogger } from "./telemetry";
-import { setCommonLogAttributes } from "./utilities/signoz";
-import { shutdownLogs } from "./utilities/logging";
+import { logger, flushTelemetry } from "./telemetry";
 import {
 	initializeContext,
 	logExtensionActivate,
@@ -9,16 +7,12 @@ import {
 } from "./telemetry/standardizedTelemetry";
 import { TelemetryEvents } from "./telemetry/types";
 import * as vscode from "vscode";
-import { TelemetryReporter } from "@vscode/extension-telemetry";
 import { CopilotMcpViewProvider } from "./panels/ExtensionPanel";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "./utilities/const";
 import { CopilotChatProvider } from "./utilities/CopilotChat";
 import { handler } from "./McpAgent";
 import { cloudMcpIndexer } from "./utilities/cloudMcpIndexer";
 import { outputLogger, LogLevel } from "./utilities/outputLogger";
-const connectionString =
-	"InstrumentationKey=2c71cf43-4cb2-4e25-97c9-bd72614a9fe8;IngestionEndpoint=https://westus2-2.in.applicationinsights.azure.com/;LiveEndpoint=https://westus2.livediagnostics.monitor.azure.com/;ApplicationId=862c3c9c-392a-4a12-8475-5c9ebeff7aaf";
-const telemetryReporter = new TelemetryReporter(connectionString);
 
 // Helper function to convert string to LogLevel enum
 function getLogLevelFromString(level: string): LogLevel {
@@ -63,8 +57,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push({ dispose: () => outputLogger.dispose() });
 	outputLogger.info("Copilot MCP extension activation started");
 
-	context.subscriptions.push(logger, { dispose: shutdownLogs });
-	context.subscriptions.push(telemetryReporter);
+	context.subscriptions.push(logger);
 	// console.dir(await vscode.authentication.getAccounts('github'), {depth: null});
 	outputLogger.debug("Checking for existing GitHub authentication session");
 	let session: vscode.AuthenticationSession | undefined;
@@ -105,9 +98,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.extensions.getExtension("AutomataLabs.copilot-mcp")?.packageJSON
 			?.version || "unknown";
 	initializeContext(session, extensionVersion);
-	if (session) {
-		setCommonLogAttributes({ ...session.account });
-	}
 
 	// Initialize CloudMCP indexer
 	outputLogger.info("Initializing CloudMCP indexer");
@@ -229,7 +219,7 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {
+export function deactivate(): Thenable<void> {
 	outputLogger.info("Copilot MCP extension deactivating");
 	// Log extension deactivation
 	logEvent({
@@ -238,4 +228,7 @@ export function deactivate() {
 			timestamp: new Date().toISOString(),
 		},
 	});
+	// Flush pending telemetry; flushTelemetry races an internal 2s timeout
+	// and never rejects, so shutdown can never hang on the network.
+	return flushTelemetry();
 }

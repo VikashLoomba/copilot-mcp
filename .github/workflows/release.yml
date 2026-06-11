@@ -231,16 +231,19 @@ jobs:
       VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
 
     steps:
-    - name: Skip Marketplace publish when token is missing
+    - name: Fail when Marketplace token is missing
       if: env.VSCE_PAT == ''
-      run: echo "VSCE_TOKEN is not configured. Skipping VS Code Marketplace publish."
+      run: |
+        echo "::error::VSCE_TOKEN secret is missing or empty. The VS Code Marketplace publish cannot proceed."
+        echo "Add a valid Azure DevOps Marketplace PAT as the VSCE_TOKEN repository secret, then rerun this workflow."
+        exit 1
 
     - name: Download VSIX artifact
-      if: env.VSCE_PAT != ''
       uses: actions/download-artifact@v4
       with:
         name: vsix-package
 
+    # vsce exits non-zero on auth failure (e.g. expired PAT), which fails this
+    # job. Do not add continue-on-error or shell fallbacks to this step.
     - name: Publish to Marketplace
-      if: env.VSCE_PAT != ''
       run: npx @vscode/vsce@2.32.0 publish --packagePath copilot-mcp-${{ needs.build.outputs.version }}.vsix

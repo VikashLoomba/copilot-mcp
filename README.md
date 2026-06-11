@@ -17,7 +17,7 @@
   
   > **Want remote MCP in ~30s?** Try **Cloud MCP** — paste a URL → OAuth → done.  
   > Works with Copilot & Claude (no keys, no terminal).  
-  > **Get started at** [cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)
+  > **Get started at** [cloudmcp.run](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=marketplace&utm_campaign=readme)
 </div>
 
 <div align="center">
@@ -57,7 +57,7 @@
 If you don’t want to run servers locally, use **Cloud MCP** (remote, OAuth‑only).  
 Paste the MCP URL into Copilot/Claude and you’re done:
 
-- **Learn More:** [https://cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)
+- **Learn More:** [https://cloudmcp.run](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=marketplace&utm_campaign=readme)
 
 ## 🛠️ Configuration
 
@@ -84,6 +84,16 @@ Configure via the UI or VS Code settings. Look for the **MCP Servers** icon in t
 - Give Copilot standardized tools via MCP
 - Local or remote workflows (Cloud MCP)
 - Join a growing, interoperable ecosystem
+
+## Telemetry
+
+Copilot MCP collects a small set of **anonymous usage events** — searches, install attempts, and clicks on in-extension links/CTAs — so we can understand which features are useful.
+
+- **What is collected:** anonymous event names with a small set of properties: the search terms you type in the extension (sidebar search and `@mcp` chat prompts, truncated to 100 characters), public GitHub repository names/URLs and skill source locators for items you search for or act on, your OS platform/architecture and the extension version, and error messages/diagnostics (truncated) when something fails.
+- **What is never collected:** file contents, workspace or repository contents, or account identifiers (no emails, usernames, or tokens) — account-shaped properties are stripped out before anything is sent.
+- **VS Code settings are respected:** the extension honors VS Code's [`telemetry.telemetryLevel`](https://code.visualstudio.com/docs/configure/telemetry) setting. If you have disabled telemetry in VS Code, the extension sends nothing.
+
+To opt out, set `telemetry.telemetryLevel` to `off` in your VS Code settings.
 
 ## 🔄 Maintainer: Vendored Copilot Provider Sync
 
@@ -114,7 +124,7 @@ PRs and feature requests welcome! See [issues](https://github.com/VikashLoomba/c
 ## ✍️ Author
 
 **Vikash Loomba**  
-Website: [https://cloudmcp.run](https://cloudmcp.run/?utm_source=github&utm_medium=readme&utm_campaign=copilot-mcp)  
+Website: [https://cloudmcp.run](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=marketplace&utm_campaign=readme)  
 X: [@DevAutomata](https://x.com/DevAutomata)  
 GitHub: [@vikashloomba](https://github.com/vikashloomba)
 
