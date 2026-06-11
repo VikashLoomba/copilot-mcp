@@ -54,6 +54,9 @@ export const TelemetryEvents = {
     EXTENSION_ACTIVATE: 'extension.activate',
     EXTENSION_DEACTIVATE: 'extension.deactivate',
     EXTENSION_NEW_USER_INSTALL: 'extension.newUserInstall',
+    // No "extension." prefix on purpose: the sender snake_cases the bare name
+    // and prefixes "ext.", so this reaches the endpoint as "ext.whats_new_shown".
+    WHATS_NEW_SHOWN: 'whatsNewShown',
     
     // Chat participant events
     CHAT_SEARCH_START: 'chat.search.start',
