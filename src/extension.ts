@@ -169,6 +169,73 @@ export async function activate(context: vscode.ExtensionContext) {
 	await showUpdatesToUser(context);
 }
 
+// Remote source of truth for the What's New page; the bundled copy is the fallback.
+const WHATS_NEW_REMOTE_URL =
+	"https://raw.githubusercontent.com/VikashLoomba/copilot-mcp/main/WHATS_NEW.md";
+// Base URL (derived from WHATS_NEW_REMOTE_URL) for resolving the doc's
+// relative image/link refs once it is staged outside the repo.
+const WHATS_NEW_REMOTE_BASE_URL = WHATS_NEW_REMOTE_URL.slice(
+	0,
+	WHATS_NEW_REMOTE_URL.lastIndexOf("/") + 1,
+);
+const WHATS_NEW_FETCH_TIMEOUT_MS = 3000;
+// Sanity bounds for the remote body; anything outside falls back to the bundled file.
+const WHATS_NEW_MIN_LENGTH = 200;
+const WHATS_NEW_MAX_LENGTH = 1024 * 1024; // 1MB
+
+/**
+ * Best-effort fetch of the latest WHATS_NEW.md from the repo, staged into the
+ * extension's global storage so the Markdown preview can open it. Returns
+ * undefined on ANY failure (timeout, non-200, implausible body, fs error) so
+ * the caller falls back to the bundled copy — this never throws or rejects.
+ */
+async function tryStageRemoteWhatsNew(
+	context: vscode.ExtensionContext,
+): Promise<vscode.Uri | undefined> {
+	try {
+		const response = await fetch(WHATS_NEW_REMOTE_URL, {
+			cache: "no-store",
+			signal: AbortSignal.timeout(WHATS_NEW_FETCH_TIMEOUT_MS),
+		});
+		if (response.status !== 200) {
+			return undefined;
+		}
+		const body = await response.text();
+		// Only trust a body that plausibly is our markdown document.
+		if (
+			!body.trim().startsWith("#") ||
+			body.length <= WHATS_NEW_MIN_LENGTH ||
+			body.length >= WHATS_NEW_MAX_LENGTH
+		) {
+			return undefined;
+		}
+		// The doc references images by relative path (they sit next to it in
+		// the repo and in the installed extension, but NOT in global storage),
+		// so rewrite relative link/image targets to absolute raw URLs. The
+		// Markdown preview's default security mode allows https images.
+		const stagedBody = body.replace(
+			/\]\((?!https?:|#)([^)]+)\)/g,
+			`](${WHATS_NEW_REMOTE_BASE_URL}$1)`,
+		);
+		await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+		const stagedUri = vscode.Uri.joinPath(
+			context.globalStorageUri,
+			"WHATS_NEW.md",
+		);
+		await vscode.workspace.fs.writeFile(
+			stagedUri,
+			new TextEncoder().encode(stagedBody),
+		);
+		return stagedUri;
+	} catch (error) {
+		outputLogger.debug(
+			"Remote WHATS_NEW.md unavailable; falling back to bundled copy",
+			error as Error,
+		);
+		return undefined;
+	}
+}
+
 // Helper that shows the WHATS_NEW.md preview when appropriate
 async function showUpdatesToUser(context: vscode.ExtensionContext) {
 	let currentVersion = "unknown";
@@ -193,11 +260,19 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 			return; // User has already been shown this version's notes
 		}
 
-		// Open the WHATS_NEW.md file bundled with the extension in the built-in Markdown preview
-		const whatsNewUri = vscode.Uri.joinPath(
+		// Open WHATS_NEW.md in the built-in Markdown preview. Remote-first:
+		// try the latest notes from the repo, but fall back to the file
+		// bundled with the extension on ANY failure so the page always opens.
+		let whatsNewUri = vscode.Uri.joinPath(
 			context.extensionUri,
 			"WHATS_NEW.md",
 		);
+		let whatsNewSource: "remote" | "bundled" = "bundled";
+		const remoteUri = await tryStageRemoteWhatsNew(context);
+		if (remoteUri) {
+			whatsNewUri = remoteUri;
+			whatsNewSource = "remote";
+		}
 		await vscode.commands.executeCommand(
 			"markdown.showPreview",
 			whatsNewUri,
@@ -205,6 +280,16 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 
 		// Persist that we've shown the notes for this version so we don't show again
 		await context.globalState.update(storageKey, currentVersion);
+
+		// Impression telemetry (sender maps the name to ext.whats_new_shown);
+		// the logger/sender are fail-safe and never throw into activation.
+		logEvent({
+			name: TelemetryEvents.WHATS_NEW_SHOWN,
+			properties: {
+				version: currentVersion,
+				source: whatsNewSource,
+			},
+		});
 	} catch (error) {
 		outputLogger.error(
 			"Failed to display What's New information",
