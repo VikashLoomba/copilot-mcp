@@ -355,6 +355,22 @@ export class CopilotChatProvider {
 				"Could not get Copilot token from GitHub API, falling back to device flow",
 			);
 
+			// The device-code flow shows a sign-in notification and then polls
+			// github.com every ~5s in a while(!authenticated) loop until the code
+			// expires (~15 min). That is only acceptable for a genuine, user-
+			// initiated sign-in. During a background probe (interactive === false,
+			// e.g. the activation-time silent init in initializeSession(false)) it
+			// must NEVER run: it would hang activation and spam "device_code has
+			// expired" (issue #60). Fail fast instead — the thrown error is matched
+			// by isExpectedBackgroundAuthFailure below, so it is recorded as the
+			// non-error ext.auth.unavailable signal and Copilot stays unconfigured
+			// until the user acts.
+			if (!interactive) {
+				throw new Error(
+					"Copilot authentication required (background) — sign in to enable AI features [device_code flow skipped]",
+				);
+			}
+
 			// If direct token retrieval failed, we need to initiate the device code flow
 			// Step 1: Request device code
 			const deviceCodeResponse = await fetch(
