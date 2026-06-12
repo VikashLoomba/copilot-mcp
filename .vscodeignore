@@ -6,6 +6,9 @@ dist/**/bundle.js.map
 # Exclude all node_modules directories
 **/node_modules/**
 
+# Exclude git hooks (husky generates .husky/_ during npm install)
+.husky/**
+
 # Exclude source files that are compiled/bundled
 src/**
 web/src/**

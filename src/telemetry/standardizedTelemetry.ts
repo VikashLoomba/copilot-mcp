@@ -4,14 +4,70 @@
 
 import * as vscode from "vscode";
 import { getLogger } from "./index";
-import { 
-    type TelemetryEvent, 
-    type TelemetryContext, 
-    type ErrorTelemetryEvent, 
+import {
+    type TelemetryEvent,
+    type TelemetryContext,
+    type ErrorTelemetryEvent,
     type PerformanceTelemetryEvent,
     type TelemetryEventName,
+    type TelemetryErrorClass,
     TelemetryEvents
 } from "./types";
+
+// Keys in logError additionalProperties that are always derived from the
+// context argument; caller-supplied values for them are ignored.
+const RESERVED_ERROR_PROP_KEYS = new Set(['context', 'errorSite', 'error_site']);
+
+/**
+ * Coarse error classification derived cheaply from error name/message and
+ * common status/code fields. Used for the error_class property.
+ */
+function classifyError(error: Error): TelemetryErrorClass {
+    const withStatus = error as Error & { status?: unknown; statusCode?: unknown; code?: unknown };
+    const status = typeof withStatus.status === 'number'
+        ? withStatus.status
+        : typeof withStatus.statusCode === 'number'
+            ? withStatus.statusCode
+            : undefined;
+    const code = typeof withStatus.code === 'string' ? withStatus.code : '';
+    const text = `${error.name} ${error.message} ${code}`.toLowerCase();
+
+    if (status === 429 || /rate.?limit|too many requests/.test(text)) {
+        return 'rate_limit';
+    }
+    if (status === 401 || status === 403 || /unauthorized|forbidden|authentication|permission|consent/.test(text)) {
+        return 'auth';
+    }
+    if (status !== undefined && status >= 400 && status < 500) {
+        return 'http_4xx';
+    }
+    if (status !== undefined && status >= 500 && status < 600) {
+        return 'http_5xx';
+    }
+    if (/network|fetch failed|econn|etimedout|enotfound|socket|dns|offline|timed?.?out/.test(text)) {
+        return 'network';
+    }
+    if (/validation|invalid|malformed|schema|parse/.test(text)) {
+        return 'validation';
+    }
+    return 'unknown';
+}
+
+/**
+ * Standard error properties. Errors are serialized explicitly here — never
+ * String()-coerced — so the pipeline can never emit "[object Object]".
+ */
+function serializeError(error: Error): {
+    errorType: string;
+    errorClass: TelemetryErrorClass;
+    errorMessage: string;
+} {
+    return {
+        errorType: error.constructor?.name || 'Error',
+        errorClass: classifyError(error),
+        errorMessage: `${error.name}: ${error.message}`.slice(0, 200),
+    };
+}
 
 class StandardizedTelemetry {
     private context: TelemetryContext = {};
@@ -97,37 +153,40 @@ class StandardizedTelemetry {
     }
 
     /**
-     * Log an error event with standardized error information
+     * Log an error event with standardized error information.
+     * Emits exactly one rich error.general event per call.
      */
     public logError(error: Error | string, context?: string, additionalProperties?: Record<string, any>): void {
         const errorObj = typeof error === 'string' ? new Error(error) : error;
-        
-        // Filter out undefined values from additional properties
+        const errorSite = context || 'unknown';
+
+        // Filter out undefined values and reserved keys (context/errorSite
+        // always reflect the context argument, never a caller property).
         const filteredProperties: Record<string, string | number | boolean> = {};
         if (additionalProperties) {
             for (const [key, value] of Object.entries(additionalProperties)) {
-                if (value !== undefined) {
+                if (value !== undefined && !RESERVED_ERROR_PROP_KEYS.has(key)) {
                     filteredProperties[key] = value;
                 }
             }
         }
-        
+
         const errorEvent: ErrorTelemetryEvent = {
             name: TelemetryEvents.ERROR_GENERAL,
             properties: {
-                errorType: errorObj.constructor.name,
-                errorMessage: errorObj.message,
+                ...serializeError(errorObj),
+                // error_site is set early and never spread over, so the call
+                // site always survives caller props and the sender's prop cap.
+                errorSite,
                 ...(errorObj.stack && { stackTrace: errorObj.stack }),
-                context: context || 'unknown',
                 ...filteredProperties,
+                // Set after filteredProperties so the context argument always
+                // wins over anything a caller might pass.
+                context: errorSite,
             },
         };
 
         this.logEvent(errorEvent);
-        
-        // Also log to VSCode's error logging
-        const logger = getLogger();
-        logger.logError(errorEvent.name, errorObj);
     }
 
     /**
@@ -266,22 +325,23 @@ class StandardizedTelemetry {
         });
     }
 
-    public logWebviewAiSetupSuccess(url: string): void {
+    public logWebviewAiSetupSuccess(url: string, additionalProperties?: Record<string, string | number | boolean>): void {
         this.logEvent({
             name: TelemetryEvents.WEBVIEW_AI_SETUP_SUCCESS,
             properties: {
                 github_repository_url: url,
+                ...additionalProperties,
             }
         });
     }
 
-    public logWebviewAiSetupError(error: Error | string): void {
+    public logWebviewAiSetupError(error: Error | string, additionalProperties?: Record<string, string | number | boolean>): void {
         const errorObj = typeof error === 'string' ? new Error(error) : error;
         this.logEvent({
             name: TelemetryEvents.WEBVIEW_AI_SETUP_ERROR,
             properties: {
-                errorType: errorObj.constructor.name,
-                errorMessage: errorObj.message,
+                ...serializeError(errorObj),
+                ...additionalProperties,
             },
         });
     }
@@ -295,7 +355,7 @@ class StandardizedTelemetry {
         });
     }
 
-    public logWebviewInstallUriOpened(uri: string): void {
+    public logWebviewInstallUriOpened(uri: string, additionalProperties?: Record<string, string | number | boolean>): void {
         let uriScheme = 'unknown';
         try {
             if (uri && uri.trim()) {
@@ -305,11 +365,12 @@ class StandardizedTelemetry {
             console.warn(`Failed to parse URI for telemetry: ${uri}`, error);
             uriScheme = 'invalid';
         }
-        
+
         this.logEvent({
             name: TelemetryEvents.WEBVIEW_INSTALL_URI_OPENED,
             properties: {
                 uriScheme,
+                ...additionalProperties,
             },
         });
     }

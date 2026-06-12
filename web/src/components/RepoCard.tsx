@@ -202,21 +202,26 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
       )}
       {/* Red button to indicate install error with "Retry Install" text */}
       {installError && (
-        <CardFooter className="pt-2 pb-3 border-t space-x-2">
-          <Button
-            variant={"destructive"}
-            onClick={handleInstallClick}
-            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
-          >
-            Retry Install
-          </Button>
-          <Button
-            variant={"outline"}
-            onClick={handleCloudMCPClick}
-            className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
-          >
-            Deploy on CloudMCP
-          </Button>
+        <CardFooter className="pt-2 pb-3 border-t flex-col items-stretch gap-2">
+          <div className="text-xs text-[var(--vscode-errorForeground)]">
+            Setup failed — retry, or run it hosted on CloudMCP instead.
+          </div>
+          <div className="flex w-full space-x-2">
+            <Button
+              variant={"destructive"}
+              onClick={handleInstallClick}
+              className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)]"
+            >
+              Retry Install
+            </Button>
+            <Button
+              variant={"outline"}
+              onClick={handleCloudMCPClick}
+              className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
+            >
+              Deploy on CloudMCP
+            </Button>
+          </div>
         </CardFooter>
       )}
     </Card>

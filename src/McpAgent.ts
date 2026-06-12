@@ -464,6 +464,21 @@ class GitHubSearchTool
 	};
 }
 
+export type AiSetupStage = "examples" | "extract";
+
+// Tags an error with the AI-setup stage it failed in (read by the panel for
+// telemetry) while preserving the original error untouched otherwise.
+function tagStage(error: unknown, stage: AiSetupStage): unknown {
+	if (typeof error === "object" && error !== null) {
+		try {
+			(error as { stage?: AiSetupStage }).stage = stage;
+		} catch {
+			// Non-extensible error object - propagate it untagged rather than fail.
+		}
+	}
+	return error;
+}
+
 export async function readmeExtractionRequest(readme: string) {
 	let provider: AxAI;
 	try {
@@ -482,26 +497,103 @@ export async function readmeExtractionRequest(readme: string) {
 		env:json "{}",
 		inputs:json[] "Array of { type, id, description, password }"
 	`);
-	extractor.setExamples(await dspyExamples());
+	try {
+		extractor.setExamples(await dspyExamples());
+	} catch (error) {
+		throw tagStage(error, "examples");
+	}
 
-	const object = await extractor.forward(
-		provider,
-		{ readme },
-		{ stream: false }
-	);
-	return {
-		name: object.name,
-		command: object.command,
-		args: object.arguments,
-		env: object.env,
-		inputs: object.inputs
+	try {
+		const object = await extractor.forward(
+			provider,
+			{ readme },
+			{ stream: false }
+		);
+		return {
+			name: object.name,
+			command: object.command,
+			args: object.arguments,
+			env: object.env,
+			inputs: object.inputs
+		};
+	} catch (error) {
+		throw tagStage(error, "extract");
+	}
+}
+
+// Structural view of the install payloads we receive (stdio configs from
+// readmeExtractionRequest, InstallCommandPayload/CliInstallRequest from the panel).
+interface McpInstallCandidate {
+	name?: string;
+	command?: string;
+	url?: string;
+	type?: string;
+	transport?: string;
+	headers?: Array<{ name: string; value: string }> | Record<string, string>;
+	inputs?: unknown[];
+}
+
+function normalizeRemoteHeaders(
+	headers: McpInstallCandidate["headers"]
+): Record<string, string> | undefined {
+	if (!headers) {
+		return undefined;
+	}
+	const record: Record<string, string> = {};
+	if (Array.isArray(headers)) {
+		for (const header of headers) {
+			if (header?.name) {
+				record[header.name] = header.value ?? "";
+			}
+		}
+	} else {
+		for (const [name, value] of Object.entries(headers)) {
+			if (name) {
+				record[name] = value ?? "";
+			}
+		}
+	}
+	return Object.keys(record).length > 0 ? record : undefined;
+}
+
+// VS Code's vscode:mcp/install handler splits the JSON query into
+// `{ name, inputs, ...config }` and stores `config` as the mcp.json server entry,
+// whose remote schema is `{ type: 'http' | 'sse', url, headers?: Record<string, string> }`
+// (verified in VS Code 1.124.0 handleMcpInstallUri / mcp.json JSON schema).
+// Remote payloads are rebuilt to that native shape: explicit `type` (the handler
+// only defaults it when absent), headers as a string record instead of the
+// webview's Array<{name, value}>, and no extra keys (the remote schema sets
+// additionalProperties: false). Stdio payloads pass through untouched.
+function toNativeInstallPayload(mcpConfig: object): object {
+	const candidate = mcpConfig as McpInstallCandidate;
+	const isRemote =
+		typeof candidate.url === "string" &&
+		candidate.url.length > 0 &&
+		!candidate.command;
+	if (!isRemote) {
+		return mcpConfig;
+	}
+	const type: "http" | "sse" =
+		candidate.type === "sse" || candidate.transport === "sse" ? "sse" : "http";
+	const native: Record<string, unknown> = {
+		name: candidate.name,
+		type,
+		url: candidate.url,
 	};
+	const headers = normalizeRemoteHeaders(candidate.headers);
+	if (headers) {
+		native.headers = headers;
+	}
+	if (Array.isArray(candidate.inputs) && candidate.inputs.length > 0) {
+		native.inputs = candidate.inputs;
+	}
+	return native;
 }
 
 export async function openMcpInstallUri(mcpConfig: object) {
 	// Create the URI with the mcp configuration
 	const uriString = `vscode:mcp/install?${encodeURIComponent(
-		JSON.stringify(mcpConfig)
+		JSON.stringify(toNativeInstallPayload(mcpConfig))
 	)}`;
 	const uri = vscode.Uri.parse(uriString);
 	const success = await vscode.env.openExternal(uri);

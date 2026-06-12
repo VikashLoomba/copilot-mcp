@@ -19,7 +19,7 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -64,13 +64,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
         ref: ${{ needs.prepare.outputs.tag }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: "20"
         cache: "npm"
@@ -103,13 +103,13 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
         ref: ${{ needs.prepare.outputs.tag }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: "20"
         cache: "npm"
@@ -124,7 +124,7 @@ jobs:
       run: npm run build:all
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: build-artifacts
         path: |
@@ -144,19 +144,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
         ref: ${{ needs.prepare.outputs.tag }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: "20"
         cache: "npm"
 
     - name: Download build artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: build-artifacts
 
@@ -192,7 +192,7 @@ jobs:
         echo "SHA256: $(cat vsix.sha256)"
 
     - name: Upload VSIX artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: vsix-package
         path: |
@@ -208,12 +208,12 @@ jobs:
 
     steps:
     - name: Download VSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: vsix-package
 
     - name: Create GitHub release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: ${{ needs.prepare.outputs.tag }}
         name: Release ${{ needs.prepare.outputs.tag }}
@@ -239,7 +239,7 @@ jobs:
         exit 1
 
     - name: Download VSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: vsix-package
 
