@@ -69,11 +69,20 @@ export const aiAssistedSetupType: RequestType<{repo: any; cloudMcpDetails?: Clou
 
 export const sendFeedbackType: NotificationType<{ feedback: string }> = { method: "sendFeedback" };
 
-export const cloudMCPInterestType: NotificationType<{ 
-	repoName: string; 
+// Where the CloudMCP-interest action originated in the RepoCard UI. Additive
+// and optional for backward compatibility: older webviews omit it, and the
+// panel defaults to "repo_card".
+// - "repo_card": the normal "Deploy on CloudMCP" button.
+// - "ai_setup_failure": the "Deploy on CloudMCP" button shown in the
+//   AI-assisted-setup failure (installError) state.
+export type CloudMcpInterestSurface = "repo_card" | "ai_setup_failure";
+
+export const cloudMCPInterestType: NotificationType<{
+	repoName: string;
 	repoOwner: string;
 	repoUrl: string;
 	timestamp: string;
+	surface?: CloudMcpInterestSurface;
 }> = { method: "cloudMCPInterest" };
 
 export const checkCloudMcpType: RequestType<{

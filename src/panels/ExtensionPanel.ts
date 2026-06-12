@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { searchMcpServers2 } from "../utilities/repoSearch";
-import { openMcpInstallUri, readmeExtractionRequest } from "../McpAgent";
+import { openMcpInstallUri, readmeExtractionRequest, describeErrorCause } from "../McpAgent";
 import type { AiSetupStage } from "../McpAgent";
 import { 
 	logWebviewSearch, 
@@ -1337,7 +1337,12 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		messenger.onNotification(cloudMCPInterestType, async (payload) => {
-			// Log CloudMCP interest with telemetry
+			// Where the click originated. Older webviews omit `surface`; default to
+			// the normal repo-card deploy so legacy clicks remain attributed.
+			const surface = payload.surface === 'ai_setup_failure' ? 'ai_setup_failure' : 'repo_card';
+
+			// Log CloudMCP interest with telemetry. `surface` lets a failure-driven
+			// deploy click be told apart from a casual one in the funnel.
 			logEvent({
 				name: 'webview.cloudmcp.interest',
 				properties: {
@@ -1345,6 +1350,7 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					repoOwner: payload.repoOwner,
 					repoUrl: payload.repoUrl,
 					timestamp: payload.timestamp,
+					surface,
 				},
 			});
 
@@ -1357,10 +1363,14 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				? repoName
 				: (repoOwner && repoName ? `${repoOwner}/${repoName}` : '');
 
+			// A failure-driven deploy is a distinct, measurable campaign; a casual
+			// repo-card deploy keeps its existing campaign.
+			const utmCampaign = surface === 'ai_setup_failure' ? 'deploy-setup-fallback' : 'deploy-repo-card';
+
 			// Deep link to the dashboard discover page for this repo, falling back
 			// to the main CloudMCP dashboard when the repo identity is absent
 			const deployUrl = repoSlug
-				? `https://cloudmcp.run/dashboard/discover?q=${encodeURIComponent(repoSlug)}&utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy-repo-card`
+				? `https://cloudmcp.run/dashboard/discover?q=${encodeURIComponent(repoSlug)}&utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=${utmCampaign}`
 				: 'https://cloudmcp.run/dashboard?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=deploy';
 
 			// Open external URL with proper referrer tracking
@@ -1594,11 +1604,15 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					const stage = getAiSetupStage(err);
 					const lmCode = err instanceof vscode.LanguageModelError ? err.code : undefined;
 					// Log exactly one rich ext.error.general for this attempt,
-					// correlated with the ai_setup funnel via attempt_id.
+					// correlated with the ai_setup funnel via attempt_id. Spread the
+					// extracted cause (the real HTTP status buried on .cause by
+					// @ax-llm/ax — issue #57) so the failure is diagnosable instead of
+					// error_class=unknown/lm_code=NULL.
 					logError(err, 'ai-assisted-setup', {
 						...(attemptId && { attemptId }),
 						...(stage && { stage }),
 						...(lmCode && { lm_code: lmCode }),
+						...describeErrorCause(err),
 					});
 					// Making the chat request might fail because
 					// - model does not exist

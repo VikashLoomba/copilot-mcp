@@ -12,7 +12,7 @@ import { Star, Code2, CalendarDays, BookText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
-import { aiAssistedSetupType, cloudMCPInterestType, previewReadmeType } from "../../../src/shared/types/rpcTypes.ts";
+import { aiAssistedSetupType, cloudMCPInterestType, previewReadmeType, type CloudMcpInterestSurface } from "../../../src/shared/types/rpcTypes.ts";
 interface CloudMcpCheckResult {
   success: boolean;
   exists: boolean;
@@ -55,15 +55,18 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
     });
   };
 
-  const handleCloudMCPClick = () => {
-    // Send telemetry event with repo URL
+  const handleCloudMCPClick = (surface: CloudMcpInterestSurface = 'repo_card') => {
+    // Send telemetry event with repo URL. `surface` distinguishes a normal
+    // deploy click from one driven by an AI-assisted-setup failure so the two
+    // can be told apart in the funnel.
     messenger.sendNotification(cloudMCPInterestType, {
       type: 'extension'
     }, {
       repoName: repo.fullName,
       repoOwner: repo.author.name,
       repoUrl: repo.url,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      surface
     });
   };
 
@@ -183,7 +186,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
               </Button>
               <Button
                 variant={"outline"}
-                onClick={handleCloudMCPClick}
+                onClick={() => handleCloudMCPClick('repo_card')}
                 className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
               >
                 Deploy on CloudMCP
@@ -192,7 +195,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
           ) : (
             <Button
               variant={"outline"}
-              onClick={handleCloudMCPClick}
+              onClick={() => handleCloudMCPClick('repo_card')}
               className="w-full bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
             >
               Deploy on CloudMCP
@@ -216,7 +219,7 @@ const RepoCard: React.FC<RepoCardProps> = ({ repo }) => {
             </Button>
             <Button
               variant={"outline"}
-              onClick={handleCloudMCPClick}
+              onClick={() => handleCloudMCPClick('ai_setup_failure')}
               className="flex-1 bg-[var(--vscode-button-background)] hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] "
             >
               Deploy on CloudMCP

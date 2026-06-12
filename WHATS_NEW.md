@@ -1,6 +1,19 @@
 # What's New in Copilot MCP!
 
-*Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.94) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.94) that significantly improves tool calling success by AI agents!*
+*Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.95) - Try out Cloud MCP's [Router Mode](https://cloudmcp.run/blog/cloud-mcp-router?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.95) that significantly improves tool calling success by AI agents!*
+
+## Version 0.0.95 - AI-Assisted Setup Works Again
+*(June 12 2026)*
+
+AI-assisted setup had stopped working: it was pinned to a GitHub Copilot model that was retired on June 1, so every setup attempt failed. This release picks a live model automatically and makes failures explain themselves — and when setup still can't complete, the existing hosted fallback now reports separately so we can see how often it rescues a failed setup.
+
+What's new
+
+- **AI-assisted setup picks a working model automatically.** It was hardwired to a single Copilot model (`gpt-5.2-codex`) that GitHub retired on June 1 2026 — so once that model went away, every AI-assisted setup failed. The extension now queries your Copilot account's live list of available models and uses one that's actually enabled (preferring Claude Sonnet 4.6, then the current GPT-5.3 Codex), with a known-good default if the list can't be reached. Setup works again, and it won't break the next time a single model is retired.
+- **Failures explain themselves.** When AI-assisted setup can't finish, the real underlying reason (including the actual error returned by the language model) now reaches the diagnostics instead of a generic "it failed" — so a problem can be understood and fixed instead of guessed at.
+- **The hosted fallback now reports separately.** When AI-assisted setup fails, the card's existing **Deploy on CloudMCP** button still takes you to the [hosted catalog](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.95) for that server — and those failure-driven clicks are now attributed apart from ordinary repo-card deploys, so we can tell how often the fallback rescues a failed setup.
+- **The What's New notes show up everywhere.** On VS Code forks that don't ship the built-in Markdown preview, these notes now open as a document (or on the web) instead of silently failing.
+- **Telemetry tune-up** for error and auth reporting — still minimal and anonymous; details in the [README Telemetry section](https://github.com/VikashLoomba/copilot-mcp#telemetry).
 
 ## Version 0.0.94 - The Installed Tab Sees Everything + Run on CloudMCP
 *(June 11 2026)*
