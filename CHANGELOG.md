@@ -6,18 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 *Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=marketplace&utm_campaign=marketplace-changelog) – Deploy remote MCP servers in seconds.*
 
+## [0.0.96] - 2026-06-12
+
+### Fixed
+
+- Faster, quieter startup: the extension no longer stalls at launch, or shows an unexpected GitHub sign-in prompt, when GitHub Copilot isn't available (no Copilot seat or a transient server error). Sign-in now happens only when you actually use a Copilot-powered feature, instead of during a silent background check at activation.
+
 ## [0.0.95] - 2026-06-12
 
 ### Fixed
 
 - AI-assisted setup works again. It was hardcoded to the `gpt-5.2-codex` Copilot model, which GitHub retired on 2026-06-01, causing every setup attempt to fail. The extension now resolves a currently-available model from your Copilot account's live `/models` catalog (preferring `claude-sonnet-4.6`, then `gpt-5.3-codex`), with a known-good fallback if the catalog can't be reached.
-- AI-assisted setup failures now surface the real underlying cause (including the actual HTTP status and error returned by the language model) to diagnostics, instead of a generic, undiagnosable failure.
+- AI-assisted setup failures now surface the real underlying cause (including the actual HTTP status and error returned by the language model), instead of a generic, undiagnosable failure.
 - The What's New notes now render on VS Code forks/OSS builds that don't ship the built-in Markdown preview command, falling back to opening the notes as a document or on the web.
-
-### Changed
-
-- Failure-driven "Deploy on CloudMCP" clicks (from the failed-setup card) are now attributed separately from normal repo-card deploys — distinct campaign plus a `surface` telemetry property — so we can tell how often the hosted fallback rescues a failed setup. The destination is unchanged.
-- Error and auth telemetry was tightened — still minimal and anonymous; see the Telemetry section in the README for what is collected.
 
 ## [0.0.94] - 2026-06-11
 
@@ -30,12 +31,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Registry searches that hit an API error now show "Search failed — try again" instead of being indistinguishable from zero results.
 - The failed-setup card now explains that setup failed and offers the hosted CloudMCP fallback alongside Retry Install.
-- Install and error telemetry was tightened — still minimal and anonymous; see the Telemetry section in the README for what is collected.
 - CI: GitHub Actions workflows updated to current action versions.
 
 ### Fixed
 
-- AI-assisted setup failures no longer report a generic "no result returned" — the real underlying error (including language-model errors) is surfaced to logs and diagnostics.
+- AI-assisted setup failures no longer report a generic "no result returned" — the real underlying error (including language-model errors) is surfaced to the logs.
 - Remote MCP servers installed to VS Code now use VS Code's native config shape (explicit `http`/`sse` type and a plain header map), so remote installs from registry cards produce valid `mcp.json` entries.
 - Git hooks (`.husky`) are no longer packaged into the extension, and the dependency lockfiles were refreshed: orphaned packages pruned and in-range dependency updates picked up (including runtime dependencies such as axios, ai, undici, and ws; no `package.json` ranges changed).
 
@@ -44,11 +44,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - "Deploy on CloudMCP" now opens the CloudMCP discover page with a search prefilled for the server you clicked, instead of a generic landing page.
-- Telemetry section in the README documenting what the extension collects and how to disable it.
 
 ### Changed
 
-- Telemetry overhauled: the old, broken pipeline was removed entirely. The new telemetry is minimal and anonymous (basic usage events like search/install/link clicks, including truncated search terms — no file contents, no account identifiers) and respects VS Code's `telemetry.telemetryLevel` setting.
 - Refreshed the Discord invite link and README formatting.
 
 ### Fixed
@@ -145,7 +143,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Marketplace metadata updates and deploy URL tracking parameters.
+- Marketplace metadata updates.
 
 ## [0.0.82] - 2025-09-16
 

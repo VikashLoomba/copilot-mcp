@@ -5,40 +5,24 @@
 ## Version 0.0.95 - AI-Assisted Setup Works Again
 *(June 12 2026)*
 
-AI-assisted setup had stopped working: it was pinned to a GitHub Copilot model that was retired on June 1, so every setup attempt failed. This release picks a live model automatically and makes failures explain themselves — and when setup still can't complete, the existing hosted fallback now reports separately so we can see how often it rescues a failed setup.
-
 What's new
 
-- **AI-assisted setup picks a working model automatically.** It was hardwired to a single Copilot model (`gpt-5.2-codex`) that GitHub retired on June 1 2026 — so once that model went away, every AI-assisted setup failed. The extension now queries your Copilot account's live list of available models and uses one that's actually enabled (preferring Claude Sonnet 4.6, then the current GPT-5.3 Codex), with a known-good default if the list can't be reached. Setup works again, and it won't break the next time a single model is retired.
-- **Failures explain themselves.** When AI-assisted setup can't finish, the real underlying reason (including the actual error returned by the language model) now reaches the diagnostics instead of a generic "it failed" — so a problem can be understood and fixed instead of guessed at.
-- **The hosted fallback now reports separately.** When AI-assisted setup fails, the card's existing **Deploy on CloudMCP** button still takes you to the [hosted catalog](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.95) for that server — and those failure-driven clicks are now attributed apart from ordinary repo-card deploys, so we can tell how often the fallback rescues a failed setup.
-- **The What's New notes show up everywhere.** On VS Code forks that don't ship the built-in Markdown preview, these notes now open as a document (or on the web) instead of silently failing.
-- **Telemetry tune-up** for error and auth reporting — still minimal and anonymous; details in the [README Telemetry section](https://github.com/VikashLoomba/copilot-mcp#telemetry).
+- **AI-assisted setup works again.** It now automatically uses whichever Copilot model is available on your account, so one-click setup from a repo just works.
 
 ## Version 0.0.94 - The Installed Tab Sees Everything + Run on CloudMCP
 *(June 11 2026)*
 
-This release makes the Installed tab show every MCP server VS Code knows about — including the ones this extension installs — and gives you a hosted option wherever a local install can't help.
-
 What's new
 
-- **The Installed tab now shows servers from VS Code's user-level `mcp.json`** — where VS Code stores user-scope MCP servers since 1.102, including every server you install with this extension's VS Code button. Your own installs finally show up. These entries are read-only for now: if you try to edit or delete one, the extension points you to the **MCP: Open User Configuration** command.
-- **Run on CloudMCP, right from Official Registry cards.** Every registry card now has a [Run on CloudMCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.94) button alongside VS Code, Claude Code, and Codex — and when a server can't be installed locally, or your registry search comes up empty, a one-click link takes you to the hosted catalog with the server or search prefilled.
-- **Remote servers now install into VS Code in VS Code's native config shape** (explicit `http`/`sse` type and a plain header map), so "Add Remote to VS Code" from registry cards produces entries VS Code actually accepts.
-- **Clearer failures.** A registry search that hits an API error now says "Search failed — try again" instead of pretending there were no results, and when AI-assisted setup fails the card now tells you what happened and offers the hosted fallback — while the logs capture the real underlying error instead of a generic message.
-- **Leaner, more reliable releases:** git hooks are no longer bundled into the extension package, the dependency lockfiles were refreshed (orphaned packages pruned and in-range dependency updates picked up — including runtime dependencies like axios and undici), and CI/release workflows were updated.
-- **Telemetry tune-up** for install and error reporting — still minimal and anonymous; details in the [README Telemetry section](https://github.com/VikashLoomba/copilot-mcp#telemetry).
+- **The Installed tab now shows every MCP server you've installed** — including the ones you add with this extension's VS Code button, which previously didn't show up.
+- **Run on CloudMCP, right from Official Registry cards.** Every registry card now has a [Run on CloudMCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=vscode&utm_campaign=whats-new-0.0.94) button alongside VS Code, Claude Code, and Codex — a hosted option whenever a local install isn't what you want.
 
-## Version 0.0.93 - Telemetry Overhaul + Smarter CloudMCP Deploys
+## Version 0.0.93 - Smarter CloudMCP Deploys
 *(June 11 2026)*
 
-This release replaces the old telemetry pipeline and makes "Deploy on CloudMCP" land you exactly where you need to be.
-
 What's new
 
-- **Telemetry overhauled.** The old, broken telemetry pipeline has been removed entirely. The new telemetry is minimal and anonymous — basic usage events like search/install/link clicks, including the search terms you type (truncated), with no file contents and no account identifiers — and it fully respects VS Code's telemetry settings. Details in the [README Telemetry section](https://github.com/VikashLoomba/copilot-mcp#telemetry).
 - **"Deploy on CloudMCP" now takes you to a search prefilled for the server you clicked**, instead of a generic landing page.
-- **Reliability and CI fixes**, including more resilient release packaging.
 
 ## Version 0.0.91 - Installed Skills Management + CI Test Automation
 *(February 16 2026)*
