@@ -17,6 +17,9 @@ export interface InstallCommandPayload {
         args?: string[];
         env?: Record<string, string>;
         url?: string;
+        /** Remote transport type; consumed by toNativeInstallPayload so SSE
+         * servers are written to mcp.json as `"type": "sse"` (defaults to http). */
+        type?: "http" | "sse";
         headers?: Array<{ name: string; value: string }>;
         inputs?: InstallInput[];
 }
@@ -98,11 +101,38 @@ export const installCodexFromConfigType: RequestType<CodexInstallRequest, void> 
         method: "installCodexFromConfig",
 };
 
-// Official Registry search (proxied via extension to avoid CORS)
+// Official Registry search (proxied via extension to avoid CORS).
+// `errored` is optional and additive: when true the panel is reporting an API
+// failure (as opposed to a genuinely empty result set); older panels omit it.
 export const registrySearchType: RequestType<
 	{ search: string; limit?: number; cursor?: string },
-	{ servers: any[]; metadata: { nextCursor?: string; count?: number } }
+	{ servers: any[]; metadata: { nextCursor?: string; count?: number }; errored?: boolean }
 > = { method: "registrySearch" };
+
+// Interest in running a server hosted on CloudMCP, sent from Official Registry
+// surfaces in the webview. `surface` identifies where the action was taken:
+// - "registry_card": the "Run on CloudMCP" install target on a registry card
+//   (`serverName` is the official registry server name).
+// - "unavailable_fallback": the fallback action shown when a local/remote
+//   install is unavailable (`serverName` plus the `reason` it was unavailable).
+// - "zero_results": the catalog-search link shown when a registry search
+//   returns no results (`query` is the search term).
+export type CloudMcpRegistryInterestSurface =
+	| "registry_card"
+	| "unavailable_fallback"
+	| "zero_results";
+
+export interface CloudMcpRegistryInterestPayload {
+	surface: CloudMcpRegistryInterestSurface;
+	serverName?: string;
+	reason?: string;
+	query?: string;
+	timestamp: string;
+}
+
+export const cloudMcpRegistryInterestType: NotificationType<CloudMcpRegistryInterestPayload> = {
+	method: "cloudMcpRegistryInterest",
+};
 
 export interface SkillsSearchRequest {
         query: string;

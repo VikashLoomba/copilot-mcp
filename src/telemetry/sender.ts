@@ -84,11 +84,23 @@ function sanitizeProps(
 			props[key] = value;
 		} else if (typeof value === "boolean") {
 			props[key] = value;
+		} else if (typeof value === "string") {
+			props[key] = value.slice(0, key === "query" ? MAX_QUERY : MAX_STRING);
+		} else if (typeof value === "object") {
+			// Objects are never String()-coerced (that yields "[object Object]"):
+			// JSON-serialize then truncate, or drop when unserializable.
+			let serialized: string | undefined;
+			try {
+				serialized = JSON.stringify(value);
+			} catch {
+				serialized = undefined;
+			}
+			if (typeof serialized !== "string") {
+				continue;
+			}
+			props[key] = serialized.slice(0, key === "query" ? MAX_QUERY : MAX_STRING);
 		} else {
-			props[key] = String(value).slice(
-				0,
-				key === "query" ? MAX_QUERY : MAX_STRING,
-			);
+			continue; // functions, symbols, bigints — drop rather than coerce
 		}
 		count++;
 	}

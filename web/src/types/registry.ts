@@ -71,6 +71,9 @@ export type RegistryServerResponse = {
 export type RegistrySearchResponse = {
 	servers?: RegistryServerResponse[] | any[];
 	metadata?: { nextCursor?: string; next_cursor?: string; count?: number } | null;
+	// Optional, additive: true when the extension is reporting an API failure
+	// rather than a genuinely empty result set. Absent on older panels.
+	errored?: boolean;
 };
 
 export type RegistryMetadata = {

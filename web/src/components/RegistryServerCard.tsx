@@ -13,9 +13,11 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useVscodeApi } from "@/contexts/VscodeApiContext";
 import { Messenger } from "vscode-messenger-webview";
 import {
+  cloudMcpRegistryInterestType,
   installClaudeFromConfigType,
   installCodexFromConfigType,
   installFromConfigType,
+  type CloudMcpRegistryInterestSurface,
   type InstallMode,
 } from "../../../src/shared/types/rpcTypes.ts";
 import type {
@@ -35,6 +37,7 @@ import {
 import defaultVscodeIcon from "@/assets/vscode.svg?url";
 import defaultClaudeIcon from "@/assets/claude.svg?url";
 import defaultCodexIcon from "@/assets/codex.svg?url";
+import defaultCloudMcpIcon from "@/assets/cloudmcp.svg?url";
 
 declare global {
   interface Window {
@@ -59,6 +62,11 @@ const resolveIcon = (filename: string, fallback: string) => {
 const vscodeIcon = resolveIcon("vscode.svg", defaultVscodeIcon);
 const claudeIcon = resolveIcon("claude.svg", defaultClaudeIcon);
 const codexIcon = resolveIcon("codex.svg", defaultCodexIcon);
+const cloudMcpIcon = resolveIcon("cloudmcp.svg", defaultCloudMcpIcon);
+
+// "cloudmcp" is not an install flow — it is a hosted alternative that hands
+// off to the extension (and from there to the browser) via a notification.
+type CardTarget = ProgramTarget | "cloudmcp";
 
 const CLAUDE_DOCS_URL =
   "https://github.com/vikashloomba/copilot-mcp/blob/main/mcp.md#add-mcp-servers-from-json-configuration";
@@ -151,10 +159,23 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
   const repoUrl = server?.repository?.url;
   const websiteUrl = server?.websiteUrl;
 
-  const programMeta: Record<ProgramTarget, { name: string; icon: string; alt: string }> = {
+  const programMeta: Record<CardTarget, { name: string; icon: string; alt: string }> = {
     vscode: { name: 'VS Code', icon: vscodeIcon, alt: 'VS Code logo' },
     claude: { name: 'Claude Code', icon: claudeIcon, alt: 'Claude logo' },
     codex: { name: 'Codex', icon: codexIcon, alt: 'Codex logo' },
+    cloudmcp: { name: 'CloudMCP', icon: cloudMcpIcon, alt: 'CloudMCP logo' },
+  };
+
+  const sendCloudMcpInterest = (
+    surface: Extract<CloudMcpRegistryInterestSurface, 'registry_card' | 'unavailable_fallback'>,
+    reason?: string,
+  ) => {
+    messenger.sendNotification(cloudMcpRegistryInterestType, { type: 'extension' }, {
+      surface,
+      serverName: server?.name,
+      reason,
+      timestamp: new Date().toISOString(),
+    });
   };
 
   const baseInstallDisabled =
@@ -164,7 +185,10 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
     (installMode === 'package' && !selectedPackage) ||
     (installMode === 'remote' && (!hasRemote || !selectedRemote));
 
-  const getButtonLabel = (target: ProgramTarget) => {
+  const getButtonLabel = (target: CardTarget) => {
+    if (target === 'cloudmcp') {
+      return 'Run on CloudMCP';
+    }
     const label = programMeta[target].name;
     if (isInstalling && programTarget === target) {
       return `Installing in ${label}…`;
@@ -178,7 +202,11 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
     return `Add Remote to ${label}`;
   };
 
-  const isButtonDisabled = (target: ProgramTarget) => {
+  const isButtonDisabled = (target: CardTarget) => {
+    if (target === 'cloudmcp') {
+      // Hosted alternative does not depend on a local install being buildable.
+      return false;
+    }
     if (baseInstallDisabled) {
       return true;
     }
@@ -342,7 +370,16 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
           </div>
         )}
         {activeBuild.unavailableReason && (
-          <div className="text-xs text-[var(--vscode-errorForeground)]">{activeBuild.unavailableReason}</div>
+          <div className="space-y-1 text-xs">
+            <div className="text-[var(--vscode-errorForeground)]">{activeBuild.unavailableReason}</div>
+            <button
+              type="button"
+              onClick={() => sendCloudMcpInterest('unavailable_fallback', activeBuild.unavailableReason)}
+              className="text-blue-500 hover:text-blue-700 hover:underline cursor-pointer"
+            >
+              Run it hosted on CloudMCP instead
+            </button>
+          </div>
         )}
         {installStatus && !installError && (
           <div className="text-xs text-[var(--vscode-editor-foreground)]">{installStatus}</div>
@@ -385,18 +422,18 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({ serverResponse 
       </CardContent>
       <CardFooter className="pt-2 pb-3 border-t">
         <div className="flex w-full items-center justify-start gap-2">
-          {(['vscode', 'claude', 'codex'] as ProgramTarget[]).map((target) => {
+          {(['vscode', 'claude', 'codex', 'cloudmcp'] as CardTarget[]).map((target) => {
             const meta = programMeta[target];
             const label = getButtonLabel(target);
             const disabled = isButtonDisabled(target);
-            const holdOpen = programTarget === target && isInstalling;
+            const holdOpen = target !== 'cloudmcp' && programTarget === target && isInstalling;
             const textClasses = `${holdOpen ? 'max-w-[12rem] opacity-100 ml-2' : 'max-w-0 opacity-0'} pointer-events-none text-xs whitespace-nowrap transition-all duration-200 ease-in-out group-hover:max-w-[12rem] group-hover:opacity-100 group-hover:ml-2 group-focus-visible:max-w-[12rem] group-focus-visible:opacity-100 group-focus-visible:ml-2`;
 
             return (
               <Button
                 key={target}
                 variant="outline"
-                onClick={() => onInstall(target)}
+                onClick={() => (target === 'cloudmcp' ? sendCloudMcpInterest('registry_card') : onInstall(target))}
                 disabled={disabled}
                 aria-label={label}
                 className="group relative flex items-center justify-start overflow-hidden rounded-md bg-[var(--vscode-button-background)] px-2 py-2 text-[var(--vscode-button-foreground)] transition-all duration-200 ease-in-out hover:border-[var(--vscode-button-border)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:cursor-not-allowed disabled:opacity-50"

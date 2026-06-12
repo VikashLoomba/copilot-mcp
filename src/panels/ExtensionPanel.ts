@@ -3,6 +3,7 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { searchMcpServers2 } from "../utilities/repoSearch";
 import { openMcpInstallUri, readmeExtractionRequest } from "../McpAgent";
+import type { AiSetupStage } from "../McpAgent";
 import { 
 	logWebviewSearch, 
 	logWebviewInstallAttempt, 
@@ -26,6 +27,7 @@ import {
         updateMcpConfigType,
         updateServerEnvVarType,
         cloudMCPInterestType,
+        cloudMcpRegistryInterestType,
         previewReadmeType,
         installFromConfigType,
         installClaudeFromConfigType,
@@ -55,7 +57,9 @@ import type { AgentType } from "../types";
 import axios from "axios";
 import { outputLogger } from "../utilities/outputLogger";
 import { GITHUB_AUTH_PROVIDER_ID, SCOPES } from "../utilities/const";
+import { readUserMcpServers } from "../utilities/mcpUserConfig";
 import { spawn, execSync, exec, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -75,17 +79,66 @@ async function getServersFromMcpJsonFile(
 	}
 }
 
-// Consolidates servers from global settings, workspace settings, and .vscode/mcp.json files
+// Reads servers from the user-level mcp.json (read-only in this release).
+// Fail-safe by contract: a missing file yields {}, and a malformed file also
+// yields {} so the Installed tab simply skips the user-level source.
+async function getUserMcpFileServers(): Promise<Record<string, any>> {
+	const entries = await readUserMcpServers();
+	if (!entries) {
+		return {};
+	}
+	const servers: Record<string, any> = {};
+	for (const entry of entries) {
+		if (entry.name && entry.config && typeof entry.config === "object" && !Array.isArray(entry.config)) {
+			servers[entry.name] = entry.config;
+		}
+	}
+	return servers;
+}
+
+// Returns true when the server is defined in the user-level mcp.json. Those
+// entries are read-only in this release: the extension's delete/env-edit
+// actions only apply to servers stored in user settings.
+async function isUserMcpFileServer(serverName: string): Promise<boolean> {
+	const userFileServers = await getUserMcpFileServers();
+	return Boolean(userFileServers[serverName]);
+}
+
+// Labels each server config with additive metadata the webview tolerates when
+// absent: `_source` drives the existing User/Workspace badge, `_configSource`
+// records the exact origin, and `_readonly` marks entries the extension cannot
+// edit or delete (the user-level mcp.json in this release).
+function labelServers(
+	servers: Record<string, any>,
+	source: "user" | "workspace",
+	configSource: "user_settings" | "user_mcp_json" | "workspace_settings" | "workspace_mcp_json",
+	readOnly: boolean = false
+): Record<string, any> {
+	const labeled: Record<string, any> = {};
+	for (const [name, server] of Object.entries(servers)) {
+		labeled[name] = server && typeof server === "object" && !Array.isArray(server)
+			? { ...server, _source: source, _configSource: configSource, ...(readOnly && { _readonly: true }) }
+			: server;
+	}
+	return labeled;
+}
+
+// Consolidates servers from global settings, the user-level mcp.json,
+// workspace settings, and .vscode/mcp.json files
 async function getAllServers(): Promise<Record<string, any>> {
         const config = vscode.workspace.getConfiguration("mcp");
 
-	// 1. Get servers from global settings
+	// 1. Get servers from global settings (the deprecated `mcp.servers` user setting)
 	const globalServers = config.inspect<Record<string, any>>("servers")?.globalValue || {};
-	
-	// 2. Get servers from workspace settings (.vscode/settings.json)
+
+	// 2. Get servers from the user-level mcp.json (superseded the user setting
+	// in VS Code 1.102). Read-only here: edits/deletes still go through settings.
+	const userFileServers = await getUserMcpFileServers();
+
+	// 3. Get servers from workspace settings (.vscode/settings.json)
 	const workspaceSettingsServers = config.inspect<Record<string, any>>("servers")?.workspaceValue || {};
 
-	// 3. Get servers from .vscode/mcp.json files in all workspace folders
+	// 4. Get servers from .vscode/mcp.json files in all workspace folders
 	let mcpJsonFileServers: Record<string, any> = {};
 	if (vscode.workspace.workspaceFolders) {
 		for (const folder of vscode.workspace.workspaceFolders) {
@@ -95,11 +148,13 @@ async function getAllServers(): Promise<Record<string, any>> {
 		}
 	}
 
-	// Merge order: global -> workspace settings -> .vscode/mcp.json files
-	let mergedServers = { ...globalServers };
-	mergedServers = { ...mergedServers, ...workspaceSettingsServers };
-	mergedServers = { ...mergedServers, ...mcpJsonFileServers };
-	
+	// Merge order (later wins on name collision):
+	// global settings -> user mcp.json -> workspace settings -> .vscode/mcp.json files
+	let mergedServers = { ...labelServers(globalServers, "user", "user_settings") };
+	mergedServers = { ...mergedServers, ...labelServers(userFileServers, "user", "user_mcp_json", true) };
+	mergedServers = { ...mergedServers, ...labelServers(workspaceSettingsServers, "workspace", "workspace_settings") };
+	mergedServers = { ...mergedServers, ...labelServers(mcpJsonFileServers, "workspace", "workspace_mcp_json") };
+
         return mergedServers;
 }
 
@@ -264,6 +319,14 @@ function buildClaudeConfigObject(payload: InstallCommandPayload, transport: Inst
                 }
         }
         return config;
+}
+
+// Reads the AI-setup stage tag (`examples` | `extract`) that McpAgent attaches
+// to errors thrown out of readmeExtractionRequest; undefined for untagged errors.
+function getAiSetupStage(error: unknown): AiSetupStage | undefined {
+	return typeof error === "object" && error !== null
+		? (error as { stage?: AiSetupStage }).stage
+		: undefined;
 }
 
 async function performVscodeInstall(payload: InstallCommandPayload) {
@@ -719,13 +782,30 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		messenger.onRequest(aiAssistedSetupType, async (payload) => {
+			// One correlation id per attempt, threaded through every event in
+			// the AI-setup funnel (start, error and performance events).
+			const attemptId = randomUUID();
+			const repoName = payload.repo?.fullName || payload.repo?.name || 'unknown';
+
 			// Log AI assisted setup attempt with standardized telemetry
-			logWebviewInstallAttempt(payload.repo?.fullName || payload.repo?.name || 'unknown');
+			logEvent({
+				name: TelemetryEvents.WEBVIEW_INSTALL_START,
+				properties: {
+					repoName,
+					install_kind: 'ai_setup',
+					attempt_id: attemptId,
+				},
+			});
+			logEvent({
+				name: TelemetryEvents.WEBVIEW_AI_SETUP_START,
+				properties: {
+					repoName,
+					attempt_id: attemptId,
+				},
+			});
 			startPerformanceTimer('ai-setup');
-			
+
 			try {
-				let setupResult;
-				
 				// Check if we have CloudMCP details with install configuration
 				// Fall back to parsing README with LM
 				const readmeToParse = payload.repo.readme;
@@ -733,45 +813,71 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					vscode.window.showErrorMessage(
 						"Neither CloudMCP details nor README content is available for installation."
 					);
+					endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
+						success: false,
+						error: false,
+						reason: 'missing_readme',
+						repoName,
+						usedCloudMcp: !!payload.cloudMcpDetails,
+						attempt_id: attemptId,
+					});
 					return false;
 				}
-				
-				setupResult = await this.vscodeLMResponse(
+
+				const setupResult = await this.vscodeLMResponse(
 					readmeToParse,
-					payload.repo?.url
+					payload.repo?.url,
+					attemptId
 				);
-				
+
 				if (setupResult) {
 					// Log successful AI assisted setup
-					logWebviewAiSetupSuccess(payload.repo.url);
+					logWebviewAiSetupSuccess(payload.repo.url, { attemptId });
 					endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
 						success: true,
-						repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
+						error: false,
+						repoName,
 						usedCloudMcp: !!payload.cloudMcpDetails,
+						attempt_id: attemptId,
 					});
 					return true;
 				} else {
-					// Log failed AI assisted setup
-					logWebviewAiSetupError('Setup failed - no result returned');
+					// Defensive: vscodeLMResponse now rethrows failures, so a
+					// missing result here is unexpected rather than the common
+					// failure path it used to be.
+					logWebviewAiSetupError('Setup failed - no result returned', { attemptId });
 					endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
 						success: false,
-						repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
+						error: false,
+						reason: 'no_result',
+						repoName,
 						usedCloudMcp: !!payload.cloudMcpDetails,
+						attempt_id: attemptId,
 					});
 					return false;
 				}
 			} catch (error) {
 				console.error("Error during AI Assisted Setup: ", error);
-				
-				// Log error with standardized error telemetry
-				logWebviewAiSetupError(error as Error);
+
+				const stage = getAiSetupStage(error);
+				const lmCode = error instanceof vscode.LanguageModelError ? error.code : undefined;
+				// The matching ext.error.general was already emitted inside
+				// vscodeLMResponse with the same attempt_id; this is the
+				// funnel-specific event carrying the real failure.
+				logWebviewAiSetupError(error as Error, {
+					attemptId,
+					...(stage && { stage }),
+					...(lmCode && { lm_code: lmCode }),
+				});
 				endPerformanceTimer('ai-setup', TelemetryEvents.PERFORMANCE_AI_SETUP, {
 					success: false,
-					repoName: payload.repo?.fullName || payload.repo?.name || 'unknown',
 					error: true,
+					repoName,
 					usedCloudMcp: !!payload.cloudMcpDetails,
+					attempt_id: attemptId,
+					...(stage && { stage }),
 				});
-				
+
 				// Notify webview about the error
 				return false;
 			}
@@ -780,7 +886,13 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 		// Direct install path from structured config (Official Registry results)
                 messenger.onRequest(installFromConfigType, async (payload) => {
                         try {
-                                logWebviewInstallAttempt(payload.name);
+                                logEvent({
+                                        name: TelemetryEvents.WEBVIEW_INSTALL_START,
+                                        properties: {
+                                                repoName: payload.name,
+                                                install_kind: 'registry_vscode',
+                                        },
+                                });
                                 return await performVscodeInstall(payload);
                         } catch (error) {
                                 console.error("Error during direct install: ", error);
@@ -790,7 +902,13 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
                 });
 
                 messenger.onRequest(installClaudeFromConfigType, async (payload: ClaudeInstallRequest) => {
-                        logWebviewInstallAttempt(payload.name);
+                        logEvent({
+                                name: TelemetryEvents.WEBVIEW_INSTALL_START,
+                                properties: {
+                                        repoName: payload.name,
+                                        install_kind: 'claude_cli',
+                                },
+                        });
                         const { values, canceled } = await collectInstallInputs(payload.inputs);
                         if (canceled) {
                                 void vscode.window.showInformationMessage("Claude installation canceled.");
@@ -816,7 +934,13 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
                 });
 
                 messenger.onRequest(installCodexFromConfigType, async (payload: CodexInstallRequest) => {
-                        logWebviewInstallAttempt(payload.name);
+                        logEvent({
+                                name: TelemetryEvents.WEBVIEW_INSTALL_START,
+                                properties: {
+                                        repoName: payload.name,
+                                        install_kind: 'codex_cli',
+                                },
+                        });
                         const { values, canceled } = await collectInstallInputs(payload.inputs);
                         if (canceled) {
                                 void vscode.window.showInformationMessage("Codex installation canceled.");
@@ -859,7 +983,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 				};
 			} catch (error) {
 				console.error('Registry search failed', error);
-				return { servers: [], metadata: {} };
+				// Additive flag: lets the webview render a "search failed"
+				// state instead of treating an API failure as zero results.
+				return { servers: [], metadata: {}, errored: true };
 			}
 		});
 
@@ -1135,6 +1261,11 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					updatedGlobalServers[serverName].env[envKey] = newValue;
 					await config.update("servers", updatedGlobalServers, vscode.ConfigurationTarget.Global);
 					// Optionally, inform webview to refresh if needed, or rely on onDidChangeConfiguration
+				} else if (await isUserMcpFileServer(serverName)) {
+					// User-level mcp.json entries are read-only in this release.
+					vscode.window.showWarningMessage(
+						`Server '${serverName}' is defined in your user-level mcp.json, which this extension does not edit. Run "MCP: Open User Configuration" to change it.`
+					);
 				} else {
 					vscode.window.showErrorMessage(
 						`Server '${serverName}' not found in global user settings. Cannot update environment variable.`
@@ -1153,8 +1284,20 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 		messenger.onNotification(deleteServerType, async (payload) => {
 			try {
+				// User-level mcp.json entries are read-only in this release;
+				// deleting only applies to servers stored in user settings, so
+				// gate entries that exist solely in the user-level mcp.json.
+				const settingsServers =
+					vscode.workspace.getConfiguration("mcp").inspect<Record<string, any>>("servers")?.globalValue || {};
+				if (!settingsServers[payload.serverName] && (await isUserMcpFileServer(payload.serverName))) {
+					vscode.window.showWarningMessage(
+						`Server '${payload.serverName}' is defined in your user-level mcp.json, which this extension does not edit. Run "MCP: Open User Configuration" to remove it.`
+					);
+					return;
+				}
+
 				await deleteServer(payload.serverName);
-				
+
 				// Log successful server deletion
 				logEvent({
 					name: 'webview.server.deleted',
@@ -1222,7 +1365,53 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 			// Open external URL with proper referrer tracking
 			await vscode.env.openExternal(vscode.Uri.parse(deployUrl));
-			
+
+		});
+
+		messenger.onNotification(cloudMcpRegistryInterestType, async (payload) => {
+			const surface = payload.surface;
+			const serverName = typeof payload.serverName === 'string' ? payload.serverName.trim() : '';
+			const reason = typeof payload.reason === 'string' ? payload.reason.slice(0, 200) : '';
+			const query = typeof payload.query === 'string' ? payload.query.slice(0, 200) : '';
+
+			// Log registry interest with telemetry. Fail-safe: telemetry must
+			// never block the URL open. Keys are snake_case per the endpoint
+			// prop-key contract; user-influenced values are truncated.
+			try {
+				logEvent({
+					name: TelemetryEvents.WEBVIEW_CLOUDMCP_REGISTRY_INTEREST,
+					properties: {
+						surface,
+						...(serverName && { server_name: serverName.slice(0, 200) }),
+						...(reason && { reason }),
+						...(query && { query }),
+						timestamp: payload.timestamp,
+					},
+				});
+			} catch (telemetryError) {
+				console.warn('Failed to log CloudMCP registry interest', telemetryError);
+			}
+
+			// Deep link to the CloudMCP dashboard per surface, falling back to
+			// the main dashboard when the server/query identity is absent.
+			const utm = 'utm_source=copilot-mcp&utm_medium=vscode';
+			let interestUrl: string;
+			if (surface === 'zero_results') {
+				interestUrl = query
+					? `https://cloudmcp.run/dashboard/discover?q=${encodeURIComponent(query)}&${utm}&utm_campaign=registry-zero-results`
+					: `https://cloudmcp.run/dashboard?${utm}&utm_campaign=registry-zero-results`;
+			} else if (surface === 'unavailable_fallback') {
+				const reasonParam = reason ? `&reason=${encodeURIComponent(reason)}` : '';
+				interestUrl = serverName
+					? `https://cloudmcp.run/dashboard/discover?server=${encodeURIComponent(serverName)}&${utm}&utm_campaign=unavailable-fallback${reasonParam}`
+					: `https://cloudmcp.run/dashboard?${utm}&utm_campaign=unavailable-fallback`;
+			} else {
+				interestUrl = serverName
+					? `https://cloudmcp.run/dashboard/discover?server=${encodeURIComponent(serverName)}&${utm}&utm_campaign=registry-card`
+					: `https://cloudmcp.run/dashboard?${utm}&utm_campaign=registry-card`;
+			}
+
+			await vscode.env.openExternal(vscode.Uri.parse(interestUrl));
 		});
 
 		messenger.onNotification(previewReadmeType, async (payload) => {
@@ -1370,7 +1559,8 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 
 	public async vscodeLMResponse(
 		readme: string,
-		repoURL?: string
+		repoURL?: string,
+		attemptId?: string
 	) {
 		return await vscode.window.withProgress(
 			{
@@ -1391,7 +1581,9 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					console.log("CMD RESPONSE: ", cmdResponse);
 					if (cmdResponse && cmdResponse.uri) {
 						// Log install URI opened with standardized telemetry
-						logWebviewInstallUriOpened(cmdResponse.uri);
+						logWebviewInstallUriOpened(cmdResponse.uri, {
+							...(attemptId && { attemptId }),
+						});
 					}
 					progress.report({
 						message: `Added MCP Server`,
@@ -1399,9 +1591,14 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 					return object;
 					// return object.object;
 				} catch (err: any) {
-					// Log error with standardized error telemetry
+					const stage = getAiSetupStage(err);
+					const lmCode = err instanceof vscode.LanguageModelError ? err.code : undefined;
+					// Log exactly one rich ext.error.general for this attempt,
+					// correlated with the ai_setup funnel via attempt_id.
 					logError(err, 'ai-assisted-setup', {
-						context: 'setup-execution',
+						...(attemptId && { attemptId }),
+						...(stage && { stage }),
+						...(lmCode && { lm_code: lmCode }),
 					});
 					// Making the chat request might fail because
 					// - model does not exist
@@ -1415,10 +1612,11 @@ export class CopilotMcpViewProvider implements vscode.WebviewViewProvider {
 						) {
 							console.log("off_topic");
 						}
-					} else {
-						// add other error handling logic
-						throw err;
 					}
+					// Rethrow (LanguageModelError included) so the caller can
+					// report the real code/message instead of a constant
+					// "no result returned" failure.
+					throw err;
 				}
 			}
 		);

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 *Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=marketplace&utm_campaign=marketplace-changelog) – Deploy remote MCP servers in seconds.*
 
+## [0.0.94] - 2026-06-11
+
+### Added
+
+- The Installed tab now lists servers from VS Code's user-level `mcp.json` (where VS Code stores user-scope MCP servers since 1.102, including servers this extension installs into VS Code). Those entries are read-only: edit and delete actions point you to the "MCP: Open User Configuration" command.
+- "Run on CloudMCP" button on Official Registry cards, plus hosted-fallback links when a server can't be installed locally and when a registry search returns no results — each opens the CloudMCP catalog with the server or search prefilled.
+
+### Changed
+
+- Registry searches that hit an API error now show "Search failed — try again" instead of being indistinguishable from zero results.
+- The failed-setup card now explains that setup failed and offers the hosted CloudMCP fallback alongside Retry Install.
+- Install and error telemetry was tightened — still minimal and anonymous; see the Telemetry section in the README for what is collected.
+- CI: GitHub Actions workflows updated to current action versions.
+
+### Fixed
+
+- AI-assisted setup failures no longer report a generic "no result returned" — the real underlying error (including language-model errors) is surfaced to logs and diagnostics.
+- Remote MCP servers installed to VS Code now use VS Code's native config shape (explicit `http`/`sse` type and a plain header map), so remote installs from registry cards produce valid `mcp.json` entries.
+- Git hooks (`.husky`) are no longer packaged into the extension, and the dependency lockfiles were refreshed: orphaned packages pruned and in-range dependency updates picked up (including runtime dependencies such as axios, ai, undici, and ws; no `package.json` ranges changed).
+
 ## [0.0.93] - 2026-06-11
 
 ### Added

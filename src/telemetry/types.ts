@@ -22,17 +22,36 @@ export interface TelemetryContext {
     platform?: string;
 }
 
+/**
+ * Coarse error classification buckets, sent on the wire as `error_class`.
+ */
+export type TelemetryErrorClass =
+    | 'http_4xx'
+    | 'http_5xx'
+    | 'rate_limit'
+    | 'auth'
+    | 'validation'
+    | 'network'
+    | 'unknown';
+
 export interface ErrorTelemetryEvent extends TelemetryEvent {
     name: `error.${string}`;
     properties: {
-        /** Error type or class name */
+        /** Error constructor name (sent as error_type) */
         errorType: string;
-        /** Error message */
+        /** Coarse error classification (sent as error_class) */
+        errorClass: TelemetryErrorClass;
+        /** Error name + message, truncated to 200 chars (sent as error_message) */
         errorMessage: string;
+        /** The logError context argument (sent as error_site); always reflects
+         *  the call site even when callers pass their own `context` property */
+        errorSite: string;
         /** Context where error occurred */
         context: string;
         /** Stack trace if available */
         stackTrace?: string;
+        /** Optional caller-generated correlation id (sent as attempt_id) */
+        attemptId?: string;
     } & Record<string, string | number | boolean>;
 }
 
@@ -80,6 +99,8 @@ export const TelemetryEvents = {
     WEBVIEW_AI_SETUP_ERROR: 'webview.aiSetup.error',
     WEBVIEW_FEEDBACK_SENT: 'webview.feedback.sent',
     WEBVIEW_INSTALL_URI_OPENED: 'webview.install.uriOpened',
+    // Reaches the endpoint as "ext.webview.cloudmcp.registry_interest".
+    WEBVIEW_CLOUDMCP_REGISTRY_INTEREST: 'webview.cloudmcp.registryInterest',
     
     // Error events
     ERROR_CHAT_SEARCH: 'error.chat.search',

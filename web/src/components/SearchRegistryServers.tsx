@@ -5,7 +5,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import RegistryServerCard from './RegistryServerCard';
 import { useVscodeApi } from '@/contexts/VscodeApiContext';
 import { Messenger } from 'vscode-messenger-webview';
-import { registrySearchType } from '../../../src/shared/types/rpcTypes.ts';
+import { cloudMcpRegistryInterestType, registrySearchType } from '../../../src/shared/types/rpcTypes.ts';
 import {
   normalizeRegistryMetadata,
   normalizeRegistryServerResponse,
@@ -43,6 +43,14 @@ const SearchRegistryServers: React.FC = () => {
         limit: ITEMS_PER_PAGE,
         cursor,
       }) as RegistrySearchResponse;
+      // Optional, additive flag from newer panels: distinguishes an API error
+      // from a genuinely empty result set. Degrade gracefully when absent.
+      if (resp?.errored) {
+        setResults([]);
+        setNextCursor(undefined);
+        setError('Search failed — try again');
+        return;
+      }
       const rawServers = Array.isArray(resp?.servers)
         ? resp?.servers
         : Array.isArray(resp as any)
@@ -59,7 +67,7 @@ const SearchRegistryServers: React.FC = () => {
       setNextCursor(metadata.nextCursor);
     } catch (e) {
       console.error(e);
-      setError('Search failed');
+      setError('Search failed — try again');
     } finally {
       setIsLoading(false);
     }
@@ -89,6 +97,14 @@ const SearchRegistryServers: React.FC = () => {
     performSearch(nextCursor);
   };
 
+  const handleSearchCloudMcpCatalog = () => {
+    messenger.sendNotification(cloudMcpRegistryInterestType, { type: 'extension' }, {
+      surface: 'zero_results',
+      query: debouncedSearchTerm,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
   return (
     <div className="space-y-4">
       <Input
@@ -100,9 +116,18 @@ const SearchRegistryServers: React.FC = () => {
       />
 
       {isLoading && <p>Loading...</p>}
-      {error && <p className="text-red-500">Error: {error}</p>}
+      {error && <p className="text-red-500">{error}</p>}
       {!isLoading && !error && debouncedSearchTerm && results.length === 0 && (
-        <p>No results found for "{debouncedSearchTerm}".</p>
+        <div className="space-y-1">
+          <p>No results found for "{debouncedSearchTerm}".</p>
+          <button
+            type="button"
+            onClick={handleSearchCloudMcpCatalog}
+            className="text-xs text-blue-500 hover:text-blue-700 hover:underline cursor-pointer"
+          >
+            Search the CloudMCP catalog for "{debouncedSearchTerm}"
+          </button>
+        </div>
       )}
       {!isLoading && !error && results.length > 0 && (
         <>

@@ -372,12 +372,15 @@ export function buildRemoteInstall(
     };
   }
 
-  const transport: InstallTransport = type === "sse" ? "sse" : "http";
+  const transport: "http" | "sse" = type === "sse" ? "sse" : "http";
   const { inputs, headers } = collectHeaderInputs(remote);
 
   const payload: InstallCommandPayload = {
     name: server?.name || "server",
     url,
+    // Carried into the VS Code install payload so toNativeInstallPayload
+    // writes the correct explicit type ("sse" servers were defaulting to http).
+    type: transport,
     headers: headers.length > 0 ? headers : undefined,
     inputs: inputs.length > 0 ? inputs : undefined,
   };
