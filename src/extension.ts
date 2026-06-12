@@ -273,10 +273,42 @@ async function showUpdatesToUser(context: vscode.ExtensionContext) {
 			whatsNewUri = remoteUri;
 			whatsNewSource = "remote";
 		}
-		await vscode.commands.executeCommand(
-			"markdown.showPreview",
-			whatsNewUri,
-		);
+		// Render the notes. The built-in Markdown preview command is absent on
+		// some VS Code forks/OSS builds (it lives in the bundled markdown
+		// extension), so fall back to opening the markdown source in an editor
+		// and, failing that, the notes on the web. The impression is recorded
+		// as long as SOME render path succeeds.
+		let rendered = false;
+		try {
+			await vscode.commands.executeCommand(
+				"markdown.showPreview",
+				whatsNewUri,
+			);
+			rendered = true;
+		} catch (previewError) {
+			outputLogger.debug(
+				"markdown.showPreview unavailable; opening notes as plain document",
+				previewError as Error,
+			);
+			try {
+				await vscode.window.showTextDocument(whatsNewUri);
+				rendered = true;
+			} catch (showDocError) {
+				outputLogger.debug(
+					"Opening notes document failed; opening notes on the web",
+					showDocError as Error,
+				);
+				rendered = await vscode.env.openExternal(
+					vscode.Uri.parse(WHATS_NEW_REMOTE_URL),
+				);
+			}
+		}
+
+		// If every render path failed, leave the stored version untouched so we
+		// try again on the next activation, and skip the impression event.
+		if (!rendered) {
+			return;
+		}
 
 		// Persist that we've shown the notes for this version so we don't show again
 		await context.globalState.update(storageKey, currentVersion);

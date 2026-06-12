@@ -296,11 +296,15 @@ export const handler: vscode.ChatRequestHandler = async (
 			
 			return result;
 		} catch (error) {
-			// Log error with standardized error telemetry
+			// Log error with standardized error telemetry. Spread the extracted
+			// cause (the real HTTP status buried on .cause by @ax-llm/ax —
+			// issue #57) so README-extraction failures are diagnosable instead
+			// of error_class=unknown.
 			logError(error as Error, 'chat-install', {
 				query: request.prompt,
 				queryLength: request.prompt.length,
 				command: request.command,
+				...describeErrorCause(error),
 			});
 			
 			// Also end performance timer for failed operations
@@ -479,6 +483,43 @@ function tagStage(error: unknown, stage: AiSetupStage): unknown {
 	return error;
 }
 
+// @ax-llm/ax's AxGen wraps service failures as a bare AxGenerateError
+// ("Generate failed") and hangs the real AxAIServiceStatusError off .cause, so
+// the HTTP status (e.g. the 4xx from a retired model — issue #57) never reaches
+// the surface error.message. Duck-types the cause chain (avoids fragile
+// cross-bundle instanceof) to pull the real status/message for telemetry.
+// Returns only contract-safe, low-cardinality props (numeric cause_status,
+// truncated cause_message); no secret-substring keys.
+export function describeErrorCause(
+	error: unknown,
+): { cause_status?: number; cause_message?: string } {
+	let current: unknown =
+		typeof error === "object" && error !== null
+			? (error as { cause?: unknown }).cause
+			: undefined;
+	for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {
+		const c = current as {
+			status?: unknown;
+			statusText?: unknown;
+			message?: unknown;
+			cause?: unknown;
+		};
+		if (typeof c.status === "number") {
+			const statusText =
+				typeof c.statusText === "string" ? c.statusText : undefined;
+			const message =
+				typeof c.message === "string" ? c.message : undefined;
+			const detail = statusText || message;
+			return {
+				cause_status: c.status,
+				...(detail ? { cause_message: detail.slice(0, 200) } : {}),
+			};
+		}
+		current = c.cause;
+	}
+	return {};
+}
+
 export async function readmeExtractionRequest(readme: string) {
 	let provider: AxAI;
 	try {
@@ -517,6 +558,13 @@ export async function readmeExtractionRequest(readme: string) {
 			inputs: object.inputs
 		};
 	} catch (error) {
+		// Do NOT log here: every caller already emits exactly one rich
+		// ext.error.general for this attempt (panel 'ai-assisted-setup' with the
+		// attempt_id, chat 'chat-install'). Logging a second 'readme-extraction'
+		// event would double-count the issue #57 metric and lose the attempt_id
+		// correlation. Instead tag the stage and let the caller spread
+		// describeErrorCause(err) into its single event to surface the buried
+		// HTTP status (e.g. the 4xx from a retired model).
 		throw tagStage(error, "extract");
 	}
 }

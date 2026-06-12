@@ -1,13 +1,90 @@
 import * as vscode from "vscode";
 
 import { ai, AxAI, AxAIOpenAIModel } from "@ax-llm/ax";
-import { logError } from "../telemetry/standardizedTelemetry";
+import { logError, logEvent } from "../telemetry/standardizedTelemetry";
 
 const GITHUB_AUTH_PROVIDER_ID = "github";
 // The GitHub Authentication Provider accepts the scopes described here:
 // https://developer.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/
 const SCOPES = ["user:email", "read:org", "read:user"];
 const GITHUB_COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98"; // This is a public client ID for Copilot
+
+// Known-good fallback model used when the live Copilot /models catalog cannot
+// be reached or returns nothing usable. Must be a currently-GA Copilot model:
+// 'gpt-5.2-codex' was retired 2026-06-01, so we lead getModelId() with
+// claude-sonnet-4.6 (safest for structured extraction) and fall back here.
+const FALLBACK_MODEL_ID = "gpt-5.3-codex";
+// Upper bound on the live /models lookup during provider construction so a slow
+// or hung catalog request can never stall initialization; on timeout we use the
+// fallback model instead.
+const MODEL_RESOLUTION_TIMEOUT_MS = 4000;
+
+/**
+ * True when a failed background auth/token attempt is an *expected* unavailable
+ * state (the user is simply signed out or offline) rather than a real fault.
+ * These dominate error.general volume during the activation-time auth probe
+ * (issue #58.3: "device_code has expired", "fetch failed"), so they are routed
+ * to a non-error signal instead. Matches conservatively on the underlying
+ * error/cause text so genuine faults still surface as errors.
+ */
+function isExpectedBackgroundAuthFailure(error: unknown): boolean {
+	const parts: string[] = [];
+	let current: unknown = error;
+	// Walk the cause chain (bounded) so a wrapped 'fetch failed' is still seen.
+	for (let depth = 0; depth < 4 && current; depth++) {
+		if (typeof current === "string") {
+			parts.push(current);
+			break;
+		}
+		if (typeof current === "object") {
+			const e = current as { message?: unknown; cause?: unknown };
+			if (typeof e.message === "string") {
+				parts.push(e.message);
+			}
+			current = e.cause;
+		} else {
+			break;
+		}
+	}
+	const text = parts.join(" ").toLowerCase();
+	return (
+		text.includes("device_code has expired") ||
+		text.includes("device_code") ||
+		text.includes("expired_token") ||
+		text.includes("authorization_pending") ||
+		text.includes("slow_down") ||
+		text.includes("fetch failed") ||
+		text.includes("network") ||
+		text.includes("enotfound") ||
+		text.includes("econnrefused") ||
+		text.includes("etimedout") ||
+		text.includes("offline")
+	);
+}
+
+/**
+ * Records an expected "auth not available" condition as a non-error telemetry
+ * signal (ext.auth.unavailable) so background probe failures don't inflate
+ * error.general. Fail-safe: never throws into the caller. `reason` is a short,
+ * non-secret label (no 'token'/'secret'/'auth'/'key'/'user'/'session' key).
+ */
+function logAuthUnavailable(error: unknown, site: string): void {
+	try {
+		const cls =
+			error instanceof Error
+				? error.constructor?.name || "Error"
+				: typeof error;
+		logEvent({
+			name: "auth.unavailable",
+			properties: {
+				reason: site.slice(0, 32),
+				cause_class: cls.slice(0, 200),
+			},
+		});
+	} catch {
+		// Telemetry must never break auth flow.
+	}
+}
 
 export class CopilotChatProvider {
 	public _context: vscode.ExtensionContext | undefined;
@@ -35,8 +112,12 @@ export class CopilotChatProvider {
 			throw new Error("CopilotChatProvider is not initialized");
 		}
 		if (!this._provider) {
+			// Use the model resolved from the live Copilot /models catalog during
+			// initialization (see resolveBaseModel). If that never ran or came up
+			// empty, fall back to a known-good GA model rather than a retired one.
+			const model = this._baseModel || FALLBACK_MODEL_ID;
 			this.provider = ai(
-				//@ts-expect-error config.model returns error but this is a valid model.
+				//@ts-expect-error config.model is typed as the AxAIOpenAIModel enum, but the live Copilot catalog id is a valid model string.
 				{
 					name: "openai",
 					apiKey: this.copilotToken,
@@ -54,7 +135,7 @@ export class CopilotChatProvider {
 						},
 					},
 					config: {
-						model: "gpt-5.2-codex",
+						model,
 					},
 				},
 			);
@@ -151,8 +232,13 @@ export class CopilotChatProvider {
 			this.session = session;
 			this.copilotToken = undefined;
 			this._provider = undefined;
+			this._baseModel = "";
 			this._headers = { ...this.defaultHeaders };
-			await this.getCopilotToken(this._context!);
+			await this.getCopilotToken(this._context!, interactive);
+			// Resolve the chat model from the live Copilot /models catalog now that
+			// the bearer header is set, so the (synchronous) provider getter can read
+			// a current model id instead of a hardcoded — and possibly retired — one.
+			await this.resolveBaseModel();
 			const existingSessions = await vscode.authentication.getAccounts(
 				GITHUB_AUTH_PROVIDER_ID,
 			);
@@ -161,7 +247,11 @@ export class CopilotChatProvider {
 			console.log("CopilotChatProvider initialization complete");
 		} catch (error) {
 			if (interactive) {
-				logError(error as Error, "github-authentication", {
+				// error_site renamed off 'github-authentication': the substring
+				// 'auth' is PII-scrubbed by the telemetry sender, which blinded
+				// these events (issue #58.1). 'github-signin' carries no
+				// secret-pattern substring.
+				logError(error as Error, "github-signin", {
 					provider: GITHUB_AUTH_PROVIDER_ID,
 					scopes: SCOPES.join(","),
 					createIfNone: interactive,
@@ -170,12 +260,33 @@ export class CopilotChatProvider {
 					"GitHub authentication failed. Please sign in to GitHub.",
 				);
 				throw error;
+			} else {
+				// Background (silent) probe: a missing/expired session is the
+				// expected steady state for signed-out users, not an error, so it
+				// must never reach error.general (issue #58.3). Token-exchange
+				// failures already self-report inside getCopilotToken and arrive
+				// here flagged telemetryReported; this outer branch then only
+				// emits for the rarer getSession-origin faults, which during a
+				// silent probe are themselves an "auth unavailable" condition.
+				// Emit the non-error signal and wait for a user-triggered call.
+				const reported =
+					typeof error === "object" &&
+					error !== null &&
+					(error as { telemetryReported?: boolean }).telemetryReported === true;
+				if (!reported) {
+					logAuthUnavailable(error, "signin-probe");
+				}
+				console.warn("Silent GitHub initialization failed", error);
 			}
 		}
 	}
 
 	private async getCopilotToken(
 		context: vscode.ExtensionContext,
+		// True only for user-initiated flows. Defaults to background-safe so any
+		// future caller is treated as a silent probe (expected-unavailable
+		// failures are not surfaced as errors) unless it opts in.
+		interactive: boolean = false,
 	): Promise<void> {
 		if (!this.session?.accessToken) {
 			throw new Error("No GitHub authentication token available");
@@ -340,15 +451,28 @@ export class CopilotChatProvider {
 		} catch (error: any) {
 			console.error("Error getting Copilot token:", error);
 
-			// Log token retrieval failure with standardized telemetry
-			logError(error, "copilot-token-retrieval", {
-				clientId: GITHUB_COPILOT_CLIENT_ID,
-				context: "token-exchange",
-			});
+			// During a background probe, an expired device code or an offline
+			// network is the expected steady state, not a user-facing error
+			// (issue #58.3). Route those to a non-error signal; surface everything
+			// else, and anything from a user-initiated flow, as an error.
+			// error_site renamed off 'copilot-token-retrieval': the substring
+			// 'token' is PII-scrubbed by the telemetry sender, which blinded these
+			// events (issue #58.1). 'copilot-credential-exchange' is clean.
+			if (!interactive && isExpectedBackgroundAuthFailure(error)) {
+				logAuthUnavailable(error, "copilot-credential-exchange");
+			} else {
+				logError(error, "copilot-credential-exchange", {
+					clientId: GITHUB_COPILOT_CLIENT_ID,
+				});
+			}
 
-			throw new Error(
+			// Mark the wrapper so the initializeSession catch doesn't re-report a
+			// failure we've already classified here (avoids a duplicate signal).
+			const wrapped = new Error(
 				`Failed to authenticate with GitHub Copilot: ${error.message}`,
 			);
+			(wrapped as { telemetryReported?: boolean }).telemetryReported = true;
+			throw wrapped;
 		}
 	}
 
@@ -435,6 +559,42 @@ export class CopilotChatProvider {
 		}
 	}
 
+	/**
+	 * Resolves the chat model from the live Copilot /models catalog and stores it
+	 * in this._baseModel for the provider getter to use. Safe to call during
+	 * initialization: it never throws and never hangs — getModelId() is raced
+	 * against a timeout, and any failure (network error, empty catalog, timeout)
+	 * falls back to a known-good GA model so provider construction always has a
+	 * valid model id.
+	 */
+	private async resolveBaseModel(): Promise<void> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			const timeout = new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() => reject(new Error("model resolution timed out")),
+					MODEL_RESOLUTION_TIMEOUT_MS,
+				);
+				timer.unref?.();
+			});
+			const modelId = await Promise.race([this.getModelId(), timeout]);
+			if (typeof modelId === "string" && modelId.length > 0) {
+				return; // getModelId already set this._baseModel/_modelCapabilities
+			}
+			throw new Error("empty model id from catalog");
+		} catch (error) {
+			console.warn(
+				`Falling back to ${FALLBACK_MODEL_ID}; live model resolution failed`,
+				error,
+			);
+			this._baseModel = FALLBACK_MODEL_ID;
+		} finally {
+			if (timer) {
+				clearTimeout(timer);
+			}
+		}
+	}
+
 	async getModelId() {
 		try {
 			const response = await fetch(`${this._baseUrl}/models`, {
@@ -466,11 +626,14 @@ export class CopilotChatProvider {
 				throw new Error("No enabled models found");
 			}
 
-			// Find models matching the models we want in the exact order of preference
+			// Find models matching the models we want in the exact order of
+			// preference. claude-sonnet-4.6 leads (safest for structured README
+			// extraction) followed by the GA gpt-5.3-codex. 'gpt-5.2-codex' is
+			// deliberately omitted: GitHub retired it 2026-06-01 and selecting it
+			// produces a 4xx on every request (issue #57).
 			const preferredModelIds = [
 				"claude-sonnet-4.6",
 				"gpt-5.3-codex",
-				"gpt-5.2-codex",
 				"gpt-5.1-codex",
 				"gpt-5.1-codex-codex-max",
 			];
