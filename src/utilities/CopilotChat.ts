@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import { ai, AxAI, AxAIOpenAIModel } from "@ax-llm/ax";
 import { logError, logEvent } from "../telemetry/standardizedTelemetry";
+import { selectChatModel } from "./modelSelection";
 
 const GITHUB_AUTH_PROVIDER_ID = "github";
 // The GitHub Authentication Provider accepts the scopes described here:
@@ -10,10 +11,12 @@ const SCOPES = ["user:email", "read:org", "read:user"];
 const GITHUB_COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98"; // This is a public client ID for Copilot
 
 // Known-good fallback model used when the live Copilot /models catalog cannot
-// be reached or returns nothing usable. Must be a currently-GA Copilot model:
-// 'gpt-5.2-codex' was retired 2026-06-01, so we lead getModelId() with
-// claude-sonnet-4.6 (safest for structured extraction) and fall back here.
-const FALLBACK_MODEL_ID = "gpt-5.3-codex";
+// be reached or returns nothing usable. Must be a model that is universally
+// chat-callable on /chat/completions and needs no per-account opt-in: 'gpt-4o'
+// is a base model available to every Copilot account. (Earlier fallbacks were
+// un-callable here — 'gpt-5.2-codex' was retired 2026-06-01, and 'gpt-5.3-codex'
+// is Responses-API-only, so it 400'd every chat request, issue #57.)
+const FALLBACK_MODEL_ID = "gpt-4o";
 // Upper bound on the live /models lookup during provider construction so a slow
 // or hung catalog request can never stall initialization; on timeout we use the
 // fallback model instead.
@@ -632,21 +635,17 @@ export class CopilotChatProvider {
 			console.log("Available models:", JSON.stringify(data, null, 2));
 
 			const models = data.data;
-			// filter out the models that are not enabled for the current editor
-			const enabledModels = models.filter(
-				(model: any) => model.model_picker_enabled,
-			);
 
-			if (enabledModels.length === 0) {
-				console.error("No enabled models found");
-				throw new Error("No enabled models found");
-			}
-
-			// Find models matching the models we want in the exact order of
-			// preference. claude-sonnet-4.6 leads (safest for structured README
-			// extraction) followed by the GA gpt-5.3-codex. 'gpt-5.2-codex' is
+			// Models in the exact order of preference. claude-sonnet-4.6 leads
+			// (safest for structured README extraction). 'gpt-5.2-codex' is
 			// deliberately omitted: GitHub retired it 2026-06-01 and selecting it
-			// produces a 4xx on every request (issue #57).
+			// produces a 4xx on every request (issue #57). The capable codex ids
+			// are kept here on purpose — selectChatModel filters the catalog to
+			// only models that are chat-callable on /chat/completions AND not
+			// policy-disabled, so an un-callable or un-opted-in preference (e.g.
+			// a /responses-only model, or sonnet before the account opts in) is
+			// dropped at runtime, while a paid seat that has it enabled still
+			// gets it.
 			const preferredModelIds = [
 				"claude-sonnet-4.6",
 				"gpt-5.3-codex",
@@ -654,28 +653,30 @@ export class CopilotChatProvider {
 				"gpt-5.1-codex-codex-max",
 			];
 
-			// Instead of filter, we'll find the first model that matches our preferences in order
-			for (const preferredId of preferredModelIds) {
-				const foundModel = enabledModels.find(
-					(model: any) => model.id === preferredId,
+			// Both the preference match and the first-available fallback are
+			// drawn only from the chat-callable+enabled subset, so every returned
+			// id is one a chat-completions request can actually use.
+			const selected = selectChatModel(models, preferredModelIds);
+
+			if (!selected) {
+				// Odd/empty catalog (no chat-callable enabled model). Don't throw
+				// or index undefined — fall back to the universally chat-callable
+				// FALLBACK_MODEL_ID so provider construction always has a valid id.
+				console.warn(
+					`No chat-callable enabled models found; using ${FALLBACK_MODEL_ID}`,
 				);
-				if (foundModel) {
-					this.modelDetails = foundModel;
-					console.log(`Selected model: ${foundModel.id}`);
-					this._baseModel = foundModel.id;
-					this._modelCapabilities = foundModel.capabilities;
-					console.log(`Model capabilities:`, this._modelCapabilities);
-					return foundModel.id;
-				}
+				this._baseModel = FALLBACK_MODEL_ID;
+				this._modelCapabilities = null;
+				this.modelDetails = null;
+				return this._baseModel;
 			}
 
-			// If none of our preferred models are available, use the first enabled model
-			this._baseModel = enabledModels[0].id;
-			this._modelCapabilities = enabledModels[0].capabilities;
-			this.modelDetails = enabledModels[0];
-			console.log(`Using first available model: ${this._baseModel}`);
+			this.modelDetails = selected;
+			this._baseModel = selected.id;
+			this._modelCapabilities = selected.capabilities;
+			console.log(`Selected model: ${selected.id}`);
 			console.log(`Model capabilities:`, this._modelCapabilities);
-			return this._baseModel;
+			return selected.id;
 		} catch (error) {
 			console.error("Error getting models:", error);
 			throw error;
