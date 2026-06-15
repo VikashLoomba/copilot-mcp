@@ -3,8 +3,13 @@
   "compilerOptions": {
     "module": "commonjs",
     "moduleResolution": "node",
-    "rootDir": ".",
-    "outDir": "../../out/test",
+    // rootDir is the src/ tree (not just src/test) so test files can import the
+    // pure, vscode-free helpers they exercise (e.g. ../utilities/modelSelection)
+    // without tripping TS6059 "not under rootDir". outDir is the matching out/
+    // root, which keeps compiled tests at out/test/**/*.test.js — the path the
+    // vscode-test runner globs (see .vscode-test.mjs) — and out/test/ui/runTest.js.
+    "rootDir": "..",
+    "outDir": "../../out",
     "types": ["node", "mocha"]
   },
   "include": ["**/*.ts"]

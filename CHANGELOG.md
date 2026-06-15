@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 *Sponsored by [Cloud MCP](https://cloudmcp.run/?utm_source=copilot-mcp&utm_medium=marketplace&utm_campaign=marketplace-changelog) – Deploy remote MCP servers in seconds.*
 
+## [0.0.97] - 2026-06-15
+
+### Fixed
+
+- AI-assisted setup now selects a Copilot model your account can actually use. It was picking models that aren't available for chat completions — either ones your account hadn't enabled, or ones that only work on a different API — so setup failed. The extension now only chooses chat-compatible, enabled models from your Copilot catalog, with a universally available fallback.
+
 ## [0.0.96] - 2026-06-12
 
 ### Fixed
